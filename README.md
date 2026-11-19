@@ -131,6 +131,10 @@ macOS võib taustaprotsessil keelata ligipääsu kaustale `~/Library/CloudStorag
 
 Studio-režiimis: kui `status` näitab „lae Studiosse üles: …mp4“, lohista see fail YouTube Studiosse (pealkirja ei pea muutma, failinimi on õige). Järgmine käivitus teeb ülejäänu.
 
+## Privaatsus
+
+Vt [PRIVACY.md](PRIVACY.md).
+
 ## Arendus
 
 ```bash
