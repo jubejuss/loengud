@@ -1,22 +1,30 @@
 # Loengute süsteemid · `loengud`
 
-Töövoog, mis viib Teamsi loengusalvestuse YouTube'i eestikeelsete subtiitritega ja salvestab transkriptsiooni õige seminari alla loengurepos.
+**Loengud lecture publisher** is a personal command-line tool by Juho Kalberg (guest lecturer, Tallinn University). It publishes the author's own Microsoft Teams lecture recordings to the author's own **YouTube** channel as unlisted videos with **Estonian captions**, adds them to course playlists, and saves transcripts and lecture notes to the course repositories.
+
+- **[Privacy Policy](PRIVACY.md)** · **[Terms of Service](TERMS.md)** · uses [YouTube API Services](https://developers.google.com/youtube/terms/api-services-terms-of-service) ([YouTube Terms of Service](https://www.youtube.com/t/terms), [Google Privacy Policy](https://policies.google.com/privacy))
+- Single user (the author), runs only on the author's own Mac; no hosted service, no other users' data.
+- YouTube API calls: `captions.insert/update/list`, `videos.list/update` (and `videos.insert` when API upload is enabled), `playlistItems.insert/list`, `channels.list` – see [`src/loengud/youtube.py`](src/loengud/youtube.py).
+
+---
+
+Töövoog, mis viib Teamsi loengusalvestuse YouTube'i eestikeelsete subtiitritega ja salvestab transkriptsiooni ning konspekti õige seminari alla loengurepos.
 
 ```
 TLÜ OneDrive / Recordings (sünk Maci)
-        │  uus .mp4, ≥20 min muutmata
+        │  uus .mp4, ≥20 min muutmata; käivitus tunniplaani järgi (launchd)
         ▼
- kuupäev → .loengud.yaml ajakava → kursus + seminar
+ TLÜ HK tunniplaan → aine → kursuse repo + seminari number
         ▼
- ffmpeg → 16 kHz WAV → TalTech est-asr-pipeline (tekstiks.ee mootor, Docker)
+ ffmpeg → 16 kHz WAV → whisper.cpp + TalTechi eesti keele mudel (kohalikult)
         ▼
- result.json → subtiitrid (SRT/VTT, 2×42 märki) + transkriptsioon.md
+ subtiitrid (SRT/VTT) + transkriptsioon.md + kirjeldus/peatükid (claude -p)
         ▼
- git commit + push  →  <repo>/<seminar>/salvestus/
+ git commit  →  <repo>/<seminar>/salvestus/
         ▼
- YouTube: video (api- või studio-režiim) → subtiitrid (et) → kursuse esitusloend
+ YouTube: video (studio- või api-režiim) → subtiitrid (et) → esitusloendid → kirjeldus
         ▼
- (olemasolev Apps Script postitab uue playlisti-video Discordi)
+ konspekt.md + lingid seminar.md-sse → Discordi teade
 ```
 
 Iga samm on idempotentne: olek on failis `~/.config/loengud/state.json`, katkestuse korral jätkab järgmine käivitus sealt, kus pooleli jäi.

@@ -20,7 +20,7 @@ The tool keeps the following on the owner's computer only:
 - a local status file containing file names, YouTube video IDs and processing state;
 - transcripts and caption files of the owner's own lectures, which are also committed to the owner's course repositories.
 
-The tool does not collect, store, sell or share any personal data of YouTube users or viewers. It uses no analytics, no advertising and no third-party tracking. Speech recognition runs locally with the open-source TalTech est-asr-pipeline; no audio is sent to third-party services.
+The tool does not collect, store, sell or share any personal data of YouTube users or viewers. It uses no analytics, no advertising and no third-party tracking. Speech recognition runs locally on the owner's computer (whisper.cpp with Tallinn University of Technology's open Estonian model); no audio or video is sent to third-party services. The text transcript of the owner's own lecture is sent to Anthropic's Claude (via the owner's own Claude Code account) only to draft the video description, chapters and lecture notes; no YouTube API data is sent there.
 
 ## Google and YouTube
 The tool uses YouTube API Services. By using it, the owner agrees to the [YouTube Terms of Service](https://www.youtube.com/t/terms). The [Google Privacy Policy](https://policies.google.com/privacy) also applies. You can revoke the tool's access at any time in your [Google Account security settings](https://myaccount.google.com/permissions).
