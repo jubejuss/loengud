@@ -104,11 +104,21 @@ def parse(html: str) -> list[Session]:
     return [Session(**r) for r in p.rows]
 
 
+def _ssl_context():
+    """python.org-i Python macOS-is ei näe süsteemi sertifikaate → kasuta certifi't, kui olemas."""
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 def fetch(teacher_id: int | str, start: date, end: date, url: str = DEFAULT_URL, timeout: int = 30) -> list[Session]:
     body = urllib.parse.urlencode({"start": start.isoformat(), "end": end.isoformat(), "checked": "1",
                                    "classes": "", "subjects": "", "teachers": str(teacher_id), "rooms": ""}).encode()
     req = urllib.request.Request(url, data=body, headers={"User-Agent": "loengud/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as r:
         return parse(r.read().decode("utf-8", errors="replace"))
 
 
