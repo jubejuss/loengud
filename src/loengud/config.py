@@ -126,7 +126,7 @@ source:
   # TLÜ OneDrive'i sünkroonitud Teamsi salvestuste kaust Macis.
   # Kontrolli täpset nime Finderis: ~/Library/CloudStorage/ all.
   recordings_dirs:
-    - "~/Library/CloudStorage/OneDrive-TallinnaÜlikool/Recordings"
+    - "~/Library/CloudStorage/OneDrive-TallinnUniversityHaapsaluCollege/Recordings"
   extensions: [".mp4"]
   # Faili ei puututa, kuni see on vähemalt nii mitu minutit muutmata (sünk käib veel).
   min_age_minutes: 20
