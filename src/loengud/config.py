@@ -34,7 +34,7 @@ class AsrConfig:
     pipeline: str = "~/tools/est-asr-pipeline"
     nextflow_bin: str = "nextflow"
     profile: str | None = None  # nt "lowmem"
-    extra_args: list[str] = field(default_factory=lambda: ["--do_speaker_id", "false"])
+    extra_args: list[str] = field(default_factory=lambda: ["--do_speaker_id", "false", "--do_language_id", "false"])
     timeout_hours: float = 8.0
     # Apple Silicon Macis: "--platform linux/amd64 --memory=10g" (pilt on ainult x86_64)
     docker_run_options: str | None = None
@@ -159,7 +159,8 @@ asr:
   pipeline: "~/tools/est-asr-pipeline"
   nextflow_bin: nextflow
   profile: null          # väikese RAM-i korral: lowmem
-  extra_args: ["--do_speaker_id", "false"]
+  # keeletuvastus (PyTorch) ei tööta M1 amd64-emulatsioonis → kõik segmendid filtreeritakse välja
+  extra_args: ["--do_speaker_id", "false", "--do_language_id", "false"]
   timeout_hours: 8
   # Apple Silicon (M1) puhul vajalik, Intel iMacis jäta null:
   docker_run_options: null   # nt "--platform linux/amd64 --memory=10g --cpus=6"

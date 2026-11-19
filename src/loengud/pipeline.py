@@ -149,8 +149,12 @@ class Pipeline:
                 self.log(f"  ? {e}")
                 return
             parts = self.state.parts_for(str(m.course.repo), m.seminar.dir, key)
+            if dry_run:
+                parts = parts + getattr(self, "_dry", {}).get((str(m.course.repo), m.seminar.dir), [])
+                self._dry = getattr(self, "_dry", {})
             part = (max(parts) + 1) if parts else 1
             if dry_run:
+                self._dry.setdefault((str(m.course.repo), m.seminar.dir), []).append(part)
                 self.log(f"  → {m.course.course}: {m.seminar.title} [{m.seminar.dir}] osa {part} (kuivkäivitus)")
                 return
             st = self.state.upsert(key, repo=str(m.course.repo), seminar_dir=m.seminar.dir, part=part,
@@ -173,7 +177,10 @@ class Pipeline:
         rid = asr_mod.recording_id(rec.path, rec.size)
         job_dir = self.cfg.work_dir / rid
 
-        # 2) transkribeerimine
+        # 2) transkribeerimine (ka siis, kui varasem tulemus oli tühi)
+        if (stage_idx(st["stage"]) < stage_idx("committed") and st.get("result_json")
+                and not self.deps.transcribe and not asr_mod.has_words(Path(st["result_json"]))):
+            st = self.state.upsert(key, stage="matched")
         if stage_idx(st["stage"]) < stage_idx("transcribed"):
             self.log("  ASR käib (võib võtta tunde)…")
             result = self.transcribe(rec.path, job_dir)

@@ -62,12 +62,23 @@ def build_command(cfg: AsrConfig, wav: Path, out_dir: Path, extra_config: Path |
     return cmd
 
 
+def has_words(result_json: Path) -> bool:
+    try:
+        import json
+        d = json.loads(result_json.read_text(encoding="utf-8"))
+        return any(t.get("words") for s in d.get("sections", []) for t in (s.get("turns") or []))
+    except Exception:
+        return False
+
+
 def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
-    """Käivitab pipeline'i ja tagastab result.json tee. Juba olemasolevat tulemust ei arvutata uuesti."""
+    """Käivitab pipeline'i ja tagastab result.json tee. Juba olemasolevat (mittetühja) tulemust ei arvutata uuesti."""
     out_dir = job_dir / "result"
     result_json = out_dir / "result.json"
-    if result_json.exists() and result_json.stat().st_size > 0:
+    if result_json.exists() and has_words(result_json):
         return result_json
+    if result_json.exists():
+        result_json.rename(out_dir / f"result.empty-{int(__import__('time').time())}.json")
 
     run_dir = job_dir / "nf-run"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +101,12 @@ def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
     if r.returncode != 0 or not result_json.exists():
         tail = (job_dir / "asr.log").read_text(encoding="utf-8", errors="replace")[-1500:]
         raise AsrError(f"ASR ebaõnnestus (kood {r.returncode}). Logi lõpp:\n{tail}")
+    if not has_words(result_json):
+        result_json.rename(out_dir / f"result.empty-{int(__import__('time').time())}.json")
+        raise AsrError(
+            "ASR andis tühja tulemuse (kõnet ei tuvastatud). Kontrolli: kas salvestusel on heli; "
+            "Apple Silicon'is lülita keeletuvastus välja (asr.extra_args: --do_language_id false). "
+            f"Nextflow'i töökaust jäeti alles: {run_dir / 'work'}")
     if not cfg.keep_work:
         shutil.rmtree(run_dir / "work", ignore_errors=True)
     return result_json
