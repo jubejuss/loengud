@@ -269,9 +269,10 @@ class Pipeline:
             clone_or_copy(rec.path, staged)
             st = self.state.upsert(key, stage="awaiting_upload", staged=str(staged),
                                    awaiting_since=datetime.now().astimezone().isoformat(timespec="minutes"))
-        vid = yt.find_uploaded_video(self.youtube(), title)
+        # Studio paneb pealkirjaks failinime: tunne ära nii ettevalmistatud fail kui ka otse lohistatud Teamsi fail
+        vid = yt.find_uploaded_video(self.youtube(), [title, staged.stem, rec.path.stem])
         if not vid:
-            self.log(f"  ⏳ ootab üleslaadimist YouTube Studiosse: {staged}")
+            self.log(f"  ⏳ ootab üleslaadimist YouTube Studiosse: {staged} (või lohista otse Teamsi fail)")
             return None
         self.log(f"  leitud Studios üles laaditud video {vid} – uuendan pealkirja, kirjelduse, privaatsuse")
         yt.update_metadata(self.youtube(), vid, title, description, self.cfg.youtube, log=self.log)

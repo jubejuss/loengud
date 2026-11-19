@@ -80,19 +80,20 @@ def upload_video(service, path: Path, title: str, description: str, cfg: Youtube
     return vid
 
 
-def find_uploaded_video(service, expected_title: str, max_pages: int = 3) -> str | None:
+def find_uploaded_video(service, expected_title: str | list[str], max_pages: int = 3) -> str | None:
     ch = service.channels().list(part="contentDetails", mine=True).execute()
     items = ch.get("items") or []
     if not items:
         raise YoutubeError("Autenditud kontol pole YouTube'i kanalit.")
     uploads = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    want = norm_title(expected_title)
+    titles = [expected_title] if isinstance(expected_title, str) else expected_title
+    want = {norm_title(t) for t in titles if t}
     token = None
     for _ in range(max_pages):
         resp = service.playlistItems().list(part="snippet", playlistId=uploads, maxResults=50,
                                             pageToken=token).execute()
         for it in resp.get("items", []):
-            if norm_title(it["snippet"]["title"]) == want:
+            if norm_title(it["snippet"]["title"]) in want:
                 return it["snippet"]["resourceId"]["videoId"]
         token = resp.get("nextPageToken")
         if not token:
