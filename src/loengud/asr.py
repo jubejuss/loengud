@@ -114,6 +114,9 @@ def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
 
 # --- whisper.cpp (TalTechNLP/whisper-large-v3-turbo-et-verbatim GGML) ---------------------------
 
+_JUNK = {"i", "h", "hm", "mm", "eh"}
+
+
 def _drop_loops(words: list[dict], max_n: int = 8, min_repeats: int = 3) -> list[dict]:
     """Eemalda Whisperi kordustsüklid: sama 1–8-sõnaline fraas ≥3 korda järjest → jäta üks alles."""
     norm = lambda w: w["word_with_punctuation"].lower().strip(".,!?;:…")  # noqa: E731
@@ -167,6 +170,9 @@ def whisper_json_to_result(wj: dict, new_turn_gap: float = 2.0) -> dict:
     for seg in wj.get("transcription", []):
         text = (seg.get("text") or "").strip()
         if not text or text.startswith("[") or text.startswith("("):
+            continue
+        core = "".join(ch for ch in text if ch.isalnum())
+        if not core or core.lower() in _JUNK:      # ainult kirjavahemärgid või üksik "i"
             continue
         off = seg.get("offsets") or {}
         start, end = off.get("from", 0) / 1000.0, off.get("to", 0) / 1000.0

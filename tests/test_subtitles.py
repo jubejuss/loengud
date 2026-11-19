@@ -117,3 +117,11 @@ def test_whisper_loop_removed():
     seg2 = [{"offsets": {"from": i * 300, "to": i * 300 + 250}, "text": " " + w} for i, w in enumerate(["ja", "ja", "nii."])]
     words2, _ = subtitles.load_words(whisper_json_to_result({"transcription": seg2}))
     assert [w.text for w in words2] == ["ja", "ja", "nii."]
+
+
+def test_whisper_junk_tokens_dropped():
+    from loengud.asr import whisper_json_to_result
+    seg = [{"offsets": {"from": i * 300, "to": i * 300 + 250}, "text": " " + w}
+           for i, w in enumerate([".", "i", "Testija", ",", "ülesanne."])]
+    words, _ = subtitles.load_words(whisper_json_to_result({"transcription": seg}))
+    assert [w.text for w in words] == ["Testija", "ülesanne."]
