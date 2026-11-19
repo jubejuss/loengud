@@ -13,7 +13,7 @@ from typing import Callable
 from . import asr as asr_mod
 from . import describe as describe_mod
 from . import discord as discord_mod
-from . import gitops, subtitles
+from . import gitops, seminarlinks, subtitles
 from . import youtube as yt
 from .config import Config
 from .schedule import Course, MatchError, Seminar, find_seminar, load_courses, match_smart, template_vars
@@ -132,7 +132,8 @@ class Pipeline:
             if st.get("stage") == "done":
                 desc_pending = self.cfg.describe.enabled and not (st.get("description_pushed") or st.get("description_failed"))
                 discord_pending = self.cfg.discord.enabled and st.get("discord_posted") is None
-                if not (desc_pending or discord_pending):
+                links_pending = st.get("seminar_linked") is None
+                if not (desc_pending or discord_pending or links_pending):
                     continue
             self.log(f"\n▶ {rec.path.name}  ({rec.start:%d.%m.%Y %H:%M}, {rec.start_source})")
             try:
@@ -253,6 +254,11 @@ class Pipeline:
             self.state.upsert(key, stage="done", problem=None, problem_kind=None)
             st = self.state.get(key)
 
+        # 6b) videolingid seminari kirjelduse (seminar.md) algusesse
+        if st.get("stage") == "done" and st.get("video_id") and st.get("seminar_linked") is None:
+            self._link_seminar(key, course, seminar, tv)
+            st = self.state.get(key)
+
         # 7) kirjeldus videole – vt allpool; 8) Discord (ka olemasolevale `attach`-videole), kui see on genereeritud ja pole veel saadetud
         if (st.get("video_id") and st.get("description") and not st.get("description_pushed")
                 and (not st.get("existing_video_id") or self.cfg.describe.update_attached)):
@@ -267,6 +273,29 @@ class Pipeline:
             self._post_discord(key, st, course, tv, title)
 
     # --- alamsammud ---------------------------------------------------------------
+    def _link_seminar(self, key, course: Course, seminar: Seminar, tv: dict) -> None:
+        try:
+            md = seminarlinks.seminar_md_path(course.repo, seminar.dir, seminar.number, course.seminar_md)
+            if not md:
+                self.log(f"  (seminari kirjeldusfaili ei leitud: {seminar.dir} – lingid lisamata)")
+                self.state.upsert(key, seminar_linked="")
+                return
+            out_dir = course.repo / seminar.dir / course.recording_subdir
+            parts = []
+            for r in self.state.recordings.values():
+                if (r.get("repo") == str(course.repo) and r.get("seminar_dir") == seminar.dir
+                        and r.get("video_id") and r.get("stage") in ("uploaded", "captioned", "done")):
+                    p = r.get("part", 1)
+                    t = out_dir / output_names(p)["md"]
+                    parts.append((p, r["video_id"], t if t.exists() else None))
+            parts = sorted({p[0]: p for p in parts}.values())
+            if seminarlinks.update_file(md, parts):
+                self._commit(course, [md], f"{tv['seminar_title']}: salvestuse lingid")
+                self.log(f"  ✓ lingid: {md.relative_to(course.repo)}")
+            self.state.upsert(key, seminar_linked=str(md.relative_to(course.repo)))
+        except Exception as e:  # noqa: BLE001
+            self.log(f"  HOIATUS: seminari lingid: {e}")
+
     def _post_discord(self, key, st, course, tv, title) -> None:
         chans = [discord_mod.Channel(**c) for c in self.cfg.discord.channels]
         targets = discord_mod.channels_for(chans, st.get("group"), st.get("subject_code"))

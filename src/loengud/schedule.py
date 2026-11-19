@@ -47,6 +47,7 @@ class Course:
     subject_codes: list[str] = field(default_factory=list)   # nt ["HKI5113.HK"] (tunniplaanist)
     match_titles: list[str] = field(default_factory=list)    # Teamsi pealkirja alamstringid, nt ["SJTA", "Sissejuhatus tarkvara"]
     seminar_dir_pattern: str = "seminarid/seminar_{n:02d}"
+    seminar_md: str | None = None  # seminari kirjeldusfail repo juure suhtes, nt "{n:02d}-seminar.md"
 
     def all_playlist_ids(self, common: list[str] | None = None) -> list[str]:
         """Kursuse esitusloend + lisaloendid + ühised (nt Haapsalu kolledž), duplikaatideta."""
@@ -119,9 +120,10 @@ def load_course(repo: Path) -> Course:
         subject_codes=[str(c) for c in codes],
         match_titles=[str(t) for t in titles],
         seminar_dir_pattern=raw.get("seminar_dir_pattern", "seminarid/seminar_{n:02d}"),
+        seminar_md=raw.get("seminar_md"),
         branch=raw.get("branch"),
         repo_url=raw.get("repo_url") or _git_remote_https(repo),
-        extra={k: v for k, v in raw.items() if k not in {"youtube", "seminars"}},
+        extra={k: v for k, v in raw.items() if k not in {"youtube", "seminars", "seminar_md"}},
     )
 
 

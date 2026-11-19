@@ -201,6 +201,11 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     assert len(mine) == 1 and mine[0][0] == "https://example/wh1"
     assert "CSS Gridist" in mine[0][1]["embeds"][0]["description"] and "3 peatükki" in mine[0][1]["embeds"][0]["description"]
 
+    readme = (lecture_repo / "seminarid/04-css-grid/README.md").read_text()
+    assert readme.startswith("# Seminar 4\n\n<!-- loengud:videod")
+    assert f"[YouTube](https://youtu.be/{vid})" in readme and "(salvestus/transkriptsioon.md)" in readme
+    assert "salvestuse lingid" in remote_log(lecture_repo)
+
     # idempotentsus: teine käivitus ei tee midagi uut
     before = remote_log(lecture_repo)
     Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append)).run()
@@ -220,6 +225,9 @@ def test_second_recording_same_seminar_becomes_part_2(tmp_path, lecture_repo):
     assert (out / "transkriptsioon.md").exists() and (out / "transkriptsioon-2.md").exists()
     titles = [u["title"] for u in fake.uploads]
     assert any("(osa 2)" in t for t in titles)
+    readme = (lecture_repo / "seminarid/04-css-grid/README.md").read_text()
+    assert "[1. osa](https://youtu.be/api1) · [2. osa](https://youtu.be/api2)" in readme
+    assert readme.count("loengud:videod") == 2  # üks plokk (algus + lõpp)
 
 
 def test_assign_resolves_unmatched(tmp_path, lecture_repo):
