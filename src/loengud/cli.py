@@ -164,6 +164,34 @@ def cmd_ajastus(args) -> int:
     return 0
 
 
+def cmd_discord(args) -> int:
+    from . import discord as dmod, tunniplaan
+    cfg = load_config(args.config_path)
+    if args.action == "skip-existing":
+        print(f"Märgitud postitatuks: {_pipeline(args).discord_skip_existing()}")
+        return 0
+    chans = [dmod.Channel(**c) for c in cfg.discord.channels]
+    print(f"Discord {'SEES' if cfg.discord.enabled else 'VÄLJAS'}; kanaleid: {len(chans)}")
+    for c in chans:
+        print(f"  #{c.name}: " + ("kõik" if c.all else f"rühmad={c.groups} ained={c.codes}"))
+    tt = cfg.timetable
+    if tt.teacher_id and tt.semester_start and tt.semester_end:
+        sessions = tunniplaan.load_cached(cfg.work_dir / "tunniplaan.json", tt.teacher_id, tt.semester_start,
+                                          tt.semester_end, tt.url)
+        from .schedule import load_courses
+        courses, _ = load_courses(cfg.repos)
+        codes = {c for course in courses for c in course.subject_codes}
+        seen = set()
+        print("\nTunniplaani ained → kanalid:")
+        for s_ in sessions:
+            if s_.code in seen or (codes and s_.code not in codes):
+                continue
+            seen.add(s_.code)
+            names = [c.name for c in dmod.channels_for(chans, s_.group, s_.code)]
+            print(f"  {s_.subject} ({s_.code}) [{s_.group}] → {', '.join('#' + n for n in names) or '—'}")
+    return 0
+
+
 def cmd_ignore(args) -> int:
     _pipeline(args).ignore(_existing(args.recording))
     print("Ignoreeritud.")
@@ -279,6 +307,10 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("ajastus", help="launchd ajastus tunniplaani järgi (install | show | uninstall)")
     s.add_argument("action", choices=["install", "show", "uninstall"])
     s.set_defaults(fn=cmd_ajastus)
+
+    s = sub.add_parser("discord", help="Discordi kanalid: show | skip-existing")
+    s.add_argument("action", choices=["show", "skip-existing"])
+    s.set_defaults(fn=cmd_discord)
 
     s = sub.add_parser("ignore", help="jäta salvestus vahele")
     s.add_argument("recording")

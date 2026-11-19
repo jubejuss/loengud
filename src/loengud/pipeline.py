@@ -12,6 +12,7 @@ from typing import Callable
 
 from . import asr as asr_mod
 from . import describe as describe_mod
+from . import discord as discord_mod
 from . import gitops, subtitles
 from . import youtube as yt
 from .config import Config
@@ -28,6 +29,7 @@ def stage_idx(stage: str | None) -> int:
 @dataclass
 class Deps:
     """Väliste süsteemide sõltuvused – testides asendatavad."""
+    discord_post: Callable[[str, dict], None] | None = None
     transcribe: Callable[[Path, Path], Path] | None = None  # (video, job_dir) -> result.json
     describe: Callable[..., dict] | None = None             # (words, course, seminar, date, part) -> {summary, chapters}
     youtube_service: Callable[[], object] | None = None
@@ -127,9 +129,11 @@ class Pipeline:
                 continue
             if st.get("stage") == "ignored":
                 continue
-            if st.get("stage") == "done" and (not self.cfg.describe.enabled or st.get("description_pushed")
-                                               or st.get("description_failed")):
-                continue
+            if st.get("stage") == "done":
+                desc_pending = self.cfg.describe.enabled and not (st.get("description_pushed") or st.get("description_failed"))
+                discord_pending = self.cfg.discord.enabled and st.get("discord_posted") is None
+                if not (desc_pending or discord_pending):
+                    continue
             self.log(f"\n▶ {rec.path.name}  ({rec.start:%d.%m.%Y %H:%M}, {rec.start_source})")
             try:
                 self.process(rec, dry_run=dry_run)
@@ -169,6 +173,8 @@ class Pipeline:
             st = self.state.upsert(key, repo=str(m.course.repo), seminar_dir=m.seminar.dir, part=part,
                                    seminar_title=m.seminar.title, seminar_date=m.seminar.date.isoformat(),
                                    seminar_number=m.seminar.number,
+                                   group=getattr(m, "group", None), subject_code=getattr(m, "code", None)
+                                   or (m.course.subject_codes[0] if m.course.subject_codes else None),
                                    stage="matched", problem=None, problem_kind=None)
         course = self.course_by_repo(st["repo"])
         seminar = self.seminar_from_state(course, st)
@@ -247,14 +253,47 @@ class Pipeline:
             self.state.upsert(key, stage="done", problem=None, problem_kind=None)
             st = self.state.get(key)
 
-        # 7) kirjeldus videole (ka olemasolevale `attach`-videole), kui see on genereeritud ja pole veel saadetud
+        # 7) kirjeldus videole – vt allpool; 8) Discord (ka olemasolevale `attach`-videole), kui see on genereeritud ja pole veel saadetud
         if (st.get("video_id") and st.get("description") and not st.get("description_pushed")
                 and (not st.get("existing_video_id") or self.cfg.describe.update_attached)):
             yt.update_description(self.youtube(), st["video_id"], st["description"])
-            self.state.upsert(key, description_pushed=True)
+            st = self.state.upsert(key, description_pushed=True)
             self.log("  ✓ kirjeldus ja peatükid videole lisatud")
 
+        # 8) Discord: üks kord, kui video on valmis (kirjeldus olemas või genereerimine ebaõnnestus/väljas)
+        dc = self.cfg.discord
+        desc_ready = (not self.cfg.describe.enabled or st.get("description_pushed") or st.get("description_failed"))
+        if dc.enabled and st.get("stage") == "done" and desc_ready and not st.get("discord_posted"):
+            self._post_discord(key, st, course, tv, title)
+
     # --- alamsammud ---------------------------------------------------------------
+    def _post_discord(self, key, st, course, tv, title) -> None:
+        chans = [discord_mod.Channel(**c) for c in self.cfg.discord.channels]
+        targets = discord_mod.channels_for(chans, st.get("group"), st.get("subject_code"))
+        if not targets:
+            self.log(f"  (Discord: rühmale {st.get('group')!r} / ainele {st.get('subject_code')} pole kanalit)")
+            self.state.upsert(key, discord_posted=[])
+            return
+        summary = None
+        if st.get("description"):
+            parts = st["description"].split("\n\n")
+            summary = parts[1] if len(parts) > 1 else None
+        n_ch = sum(1 for line in (st.get("description") or "").splitlines()
+                   if line[:1].isdigit() and ":" in line.split(" ")[0])
+        payload = discord_mod.build_payload(title, st["video_id"], course.course, summary, n_ch,
+                                            tv.get("materials_url"))
+        post = self.deps.discord_post or discord_mod.post
+        done = []
+        for ch in targets:
+            try:
+                post(ch.webhook, payload)
+                done.append(ch.name)
+            except Exception as e:  # noqa: BLE001
+                self.log(f"  HOIATUS: Discord {ch.name}: {e}")
+        self.state.upsert(key, discord_posted=done)
+        if done:
+            self.log(f"  ✓ Discord: {', '.join(done)}")
+
     def _describe(self, key, st, course, seminar, part, tv, out_dir: Path, names: dict) -> dict:
         try:
             words, _ = subtitles.load_words(Path(st["result_json"]))
@@ -345,6 +384,15 @@ class Pipeline:
                           seminar_title=sem.title if sem else seminar_dir.strip("/").split("/")[-1],
                           seminar_date=(sem.date.isoformat() if sem else rec_start),
                           stage="matched", problem=None, problem_kind=None)
+
+    def discord_skip_existing(self) -> int:
+        """Märgi kõik juba valmis salvestused Discordi postitatuks (vältimaks topeltpostitusi vana boti järel)."""
+        n = 0
+        for k, r in self.state.recordings.items():
+            if r.get("stage") == "done" and r.get("discord_posted") is None:
+                self.state.upsert(k, discord_posted=["(vahele jäetud)"])
+                n += 1
+        return n
 
     def ignore(self, recording: Path) -> None:
         self.scan()

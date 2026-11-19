@@ -58,6 +58,8 @@ class Course:
 class Match:
     course: Course
     seminar: Seminar
+    group: str | None = None   # tunniplaani rühm, nt "Rakendusinformaatika 1. kursus"
+    code: str | None = None
 
 
 class MatchError(Exception):
@@ -245,7 +247,7 @@ def match_smart(courses: list[Course], start: datetime, meeting_title: str, sess
         if len(pairs) == 1:
             c, s = pairs[0]
             n = tnum or tp.ordinal(sessions, s)
-            return Match(c, seminar_for_number(c, n, date.fromisoformat(s.date)))
+            return Match(c, seminar_for_number(c, n, date.fromisoformat(s.date)), group=s.group, code=s.code)
         if len(pairs) > 1:
             raise MatchError("ambiguous", f"Tunniplaanis on samal ajal mitu ainet: "
                              f"{', '.join(s.subject for _, s in pairs)} – lisa kursustele `match_titles`.")

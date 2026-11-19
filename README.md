@@ -75,6 +75,10 @@ curl -L -o ~/tools/whisper-models/ggml-silero-v6.2.0.bin \
 
 Pärast transkriptsiooni koostab keelemudel kokkuvõtte ja YouTube'i peatükid (`describe.command`, vaikimisi Claude Code: `claude -p`). Tulemus läheb video kirjeldusse ja faili `salvestus/kirjeldus.md`. Üliõpilaste nimesid ei kasutata. Ebaõnnestumisel kasutatakse kirjelduse malli.
 
+### 1d. Discord
+
+Kui video on valmis (subtiitrid + kirjeldus), postitab tööriist Discordi kanalitesse webhookiga. Kanal valitakse tunniplaani **rühma** (nt „Rakendusinformaatika 1. kursus“) ja/või ainekoodi järgi; `all: true` kanal saab kõik. `loengud discord show` näitab, mis aine mis kanalisse läheb. Vana Apps Scripti boti asemel: enne sisselülitamist `loengud discord skip-existing`, et juba postitatud videoid uuesti ei saadetaks.
+
 ### 2. Tööriist
 
 ```bash

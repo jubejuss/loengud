@@ -79,6 +79,13 @@ class DescribeConfig:
 
 
 @dataclass
+class DiscordConfig:
+    enabled: bool = False
+    # [{name, webhook, groups: ["Rakendusinformaatika 1. kursus"], codes: ["HKI5113.HK"], all: false}]
+    channels: list = field(default_factory=list)
+
+
+@dataclass
 class GitConfig:
     push: bool = True
     pull_before: bool = True
@@ -104,6 +111,7 @@ class Config:
     git: GitConfig
     timetable: TimetableConfig
     describe: DescribeConfig
+    discord: DiscordConfig
     work_dir: Path
     state_file: Path
     path: Path | None = None
@@ -150,6 +158,7 @@ def load_config(path: Path | None = None) -> Config:
         git=_merge(GitConfig, raw.get("git")),
         timetable=TimetableConfig(**tt),
         describe=_merge(DescribeConfig, raw.get("describe")),
+        discord=_merge(DiscordConfig, raw.get("discord")),
         work_dir=work_dir,
         state_file=_p(raw.get("state_file", "~/.config/loengud/state.json")),
         path=path,
@@ -220,6 +229,17 @@ describe:
   enabled: true
   command: ["claude", "-p", "--output-format", "text"]
   update_attached: true
+
+# Discordi teavitused (webhookid). Kanal valitakse tunniplaani rühma ja/või ainekoodi järgi.
+discord:
+  enabled: false
+  channels: []
+  #  - name: RIF26
+  #    webhook: "https://discord.com/api/webhooks/…"
+  #    groups: ["Rakendusinformaatika 1. kursus"]
+  #  - name: kalbergi-kursused
+  #    webhook: "https://discord.com/api/webhooks/…"
+  #    all: true
 
 git:
   push: true

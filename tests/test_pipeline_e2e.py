@@ -109,12 +109,24 @@ youtube:
   common_playlist_ids: ["PLcommon", "PLtest"]
   client_secrets: "{tmp_path / 'cs.json'}"
   token: "{tmp_path / 'tok.json'}"
+discord:
+  enabled: true
+  channels:
+    - {{name: koik, webhook: "https://example/wh1", all: true}}
+    - {{name: muu, webhook: "https://example/wh2", groups: ["Muu rühm"]}}
 git:
   push: true
 work_dir: "{tmp_path / 'work'}"
 state_file: "{tmp_path / 'state.json'}"
 """, encoding="utf-8")
     return load_config(cfg)
+
+
+POSTS = []
+
+
+def fake_post(url, payload):
+    POSTS.append((url, payload))
 
 
 def fake_describe(words, course, seminar, date, part):
@@ -149,7 +161,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     cfg = write_config(tmp_path, lecture_repo, rec_dir, mode)
     fake = FakeYouTube()
     logs = []
-    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append))
+    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
 
     problems = p.run()
     assert problems == 1  # sobitamatu salvestus
@@ -165,7 +177,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
         assert staged.exists() and staged.name.startswith("Veebiarendus (RIF25) – Seminar 4 - CSS Grid")
         # kasutaja laeb Studiosse; YouTube paneb pealkirjaks failinime
         fake.uploads.append({"id": "studio1", "title": staged.stem})
-        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append))
+        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
         p2.run()
         st = p2.state.get(str(rec))
         assert not staged.exists()
@@ -185,10 +197,15 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     descs = [u["snippet"]["description"] for u in fake.updated if "description" in u.get("snippet", {})]
     assert any("0:00 Algus" in d and "1:00 Grid" in d and "Seminaris räägiti" in d for d in descs)
 
+    mine = [p for p in POSTS if f"youtu.be/{vid}" in p[1]["content"]]
+    assert len(mine) == 1 and mine[0][0] == "https://example/wh1"
+    assert "CSS Gridist" in mine[0][1]["embeds"][0]["description"] and "3 peatükki" in mine[0][1]["embeds"][0]["description"]
+
     # idempotentsus: teine käivitus ei tee midagi uut
     before = remote_log(lecture_repo)
-    Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append)).run()
+    Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append)).run()
     assert remote_log(lecture_repo) == before
+    assert len([p for p in POSTS if f"youtu.be/{vid}" in p[1]["content"]]) == 1
     assert fake.inserted_videos == (1 if mode == "api" else 0)
 
 
