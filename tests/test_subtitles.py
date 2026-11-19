@@ -93,3 +93,27 @@ def test_whispercpp_collapsed_timestamps_are_spread():
     assert all(w.end > w.start for w in words)
     for c in subtitles.segment(words):
         assert c.end > c.start
+
+
+def test_describe_parse_and_render():
+    from loengud import describe
+    raw = 'Siin on vastus:\n{"summary": "Teema X.", "chapters": [{"t": "0:05", "title": "Sissejuhatus"}, {"t": "4:57", "title": "AI"}, {"t": "4:59", "title": "liiga lähedal"}, {"t": "1:13:17", "title": "Riskid"}, {"t": "9:99:99", "title": "vale"}]}'
+    d = describe.parse_response(raw, duration=5400)
+    assert d["chapters"][0] == (0, "Algus")
+    assert (297, "AI") in d["chapters"] and all(t != "liiga lähedal" for _, t in d["chapters"])
+    text = describe.render(d, "Kursus, Seminar 4 (19.11.2026)", ["Materjalid: x", ""])
+    assert "0:00 Algus" in text and "1:13:17 Riskid" in text and text.endswith("Materjalid: x")
+
+
+def test_whisper_loop_removed():
+    from loengud.asr import whisper_json_to_result
+    phrase = ["kas", "sa", "oled", "võtnud,"]
+    seg, t = [], 0
+    for w in ["Okei,", "siis"] + phrase * 6 + ["Paari", "tagasi."]:
+        seg.append({"offsets": {"from": t, "to": t + 300}, "text": " " + w}); t += 320
+    words, _ = subtitles.load_words(whisper_json_to_result({"transcription": seg}))
+    assert [w.text for w in words] == ["Okei,", "siis", "kas", "sa", "oled", "võtnud,", "Paari", "tagasi."]
+    # tavaline kordus ("ja ja") jääb alles
+    seg2 = [{"offsets": {"from": i * 300, "to": i * 300 + 250}, "text": " " + w} for i, w in enumerate(["ja", "ja", "nii."])]
+    words2, _ = subtitles.load_words(whisper_json_to_result({"transcription": seg2}))
+    assert [w.text for w in words2] == ["ja", "ja", "nii."]

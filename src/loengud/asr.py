@@ -114,6 +114,34 @@ def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
 
 # --- whisper.cpp (TalTechNLP/whisper-large-v3-turbo-et-verbatim GGML) ---------------------------
 
+def _drop_loops(words: list[dict], max_n: int = 8, min_repeats: int = 3) -> list[dict]:
+    """Eemalda Whisperi kordustsüklid: sama 1–8-sõnaline fraas ≥3 korda järjest → jäta üks alles."""
+    norm = lambda w: w["word_with_punctuation"].lower().strip(".,!?;:…")  # noqa: E731
+    out: list[dict] = []
+    i, n = 0, len(words)
+    while i < n:
+        best = None
+        for size in range(1, max_n + 1):
+            if i + size * min_repeats > n:
+                break
+            pat = [norm(w) for w in words[i:i + size]]
+            reps = 1
+            while i + (reps + 1) * size <= n and [norm(w) for w in words[i + reps * size:i + (reps + 1) * size]] == pat:
+                reps += 1
+            if reps >= min_repeats and (best is None or size * reps > best[0] * best[1]):
+                best = (size, reps)
+        if best:
+            size, reps = best
+            keep = words[i:i + size]
+            keep[-1] = dict(keep[-1], end=words[i + size * reps - 1]["end"])
+            out.extend(keep)
+            i += size * reps
+        else:
+            out.append(words[i])
+            i += 1
+    return out
+
+
 def _spread_collapsed(words: list[dict], min_word: float = 0.12) -> None:
     """Whisper annab vahel kümnetele sõnadele sama ajatempli → jaota need ühtlaselt naabrite vahele."""
     i, n = 0, len(words)
@@ -146,6 +174,7 @@ def whisper_json_to_result(wj: dict, new_turn_gap: float = 2.0) -> dict:
             end = start + 0.2
         words.append({"word": text.strip(".,!?;:").lower(), "word_with_punctuation": text,
                       "start": round(start, 3), "end": round(end, 3)})
+    words = _drop_loops(words)
     _spread_collapsed(words)
     turns, cur = [], []
     for w in words:
@@ -173,7 +202,16 @@ def transcribe_whispercpp(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -
         raise AsrError(f"Whisperi mudel puudub: {model} (vt README → whisper.cpp)")
     base = out_dir / "whisper"
     cmd = [cfg.whisper_bin, "-m", str(model), "-f", str(wav), "-l", "et", "-t", str(cfg.whisper_threads),
-           "-ml", "1", "-sow", "-oj", "-of", str(base), "-pp"] + [str(a) for a in cfg.whisper_extra_args]
+           "-ml", "1", "-sow", "-oj", "-of", str(base), "-pp"]
+    if cfg.whisper_max_context is not None and cfg.whisper_max_context >= 0:
+        cmd += ["-mc", str(cfg.whisper_max_context)]
+    if cfg.whisper_vad_model:
+        vad = Path(cfg.whisper_vad_model).expanduser()
+        if vad.exists():
+            cmd += ["--vad", "-vm", str(vad)]
+        else:
+            log(f"  HOIATUS: VAD-mudel puudub ({vad}) – jätkan ilma VAD-ita")
+    cmd += [str(a) for a in cfg.whisper_extra_args]
     log("ASR (whisper.cpp): " + " ".join(cmd))
     with open(job_dir / "asr.log", "w", encoding="utf-8") as logf:
         try:

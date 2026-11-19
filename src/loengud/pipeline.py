@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import asr as asr_mod
+from . import describe as describe_mod
 from . import gitops, subtitles
 from . import youtube as yt
 from .config import Config
@@ -28,13 +29,15 @@ def stage_idx(stage: str | None) -> int:
 class Deps:
     """Väliste süsteemide sõltuvused – testides asendatavad."""
     transcribe: Callable[[Path, Path], Path] | None = None  # (video, job_dir) -> result.json
+    describe: Callable[..., dict] | None = None             # (words, course, seminar, date, part) -> {summary, chapters}
     youtube_service: Callable[[], object] | None = None
     log: Callable[[str], None] = field(default=lambda m: print(m, flush=True))
 
 
 def output_names(part: int) -> dict[str, str]:
     sfx = f"-{part}" if part > 1 else ""
-    return {"md": f"transkriptsioon{sfx}.md", "srt": f"subtiitrid{sfx}.et.srt", "vtt": f"subtiitrid{sfx}.et.vtt"}
+    return {"md": f"transkriptsioon{sfx}.md", "srt": f"subtiitrid{sfx}.et.srt", "vtt": f"subtiitrid{sfx}.et.vtt",
+            "desc": f"kirjeldus{sfx}.md"}
 
 
 def clone_or_copy(src: Path, dst: Path) -> None:
@@ -122,7 +125,10 @@ class Pipeline:
         for rec, st in self.scan():
             if only and rec.path.resolve() != only.resolve():
                 continue
-            if st.get("stage") in ("done", "ignored"):
+            if st.get("stage") == "ignored":
+                continue
+            if st.get("stage") == "done" and (not self.cfg.describe.enabled or st.get("description_pushed")
+                                               or st.get("description_failed")):
                 continue
             self.log(f"\n▶ {rec.path.name}  ({rec.start:%d.%m.%Y %H:%M}, {rec.start_source})")
             try:
@@ -189,12 +195,19 @@ class Pipeline:
             result = self.transcribe(rec.path, job_dir)
             st = self.state.upsert(key, stage="transcribed", result_json=str(result), problem=None)
 
+        # 2b) kirjeldus + peatükid (keelemudel); ebaõnnestumine ei peata töövoogu
+        if (self.cfg.describe.enabled and not st.get("description") and not st.get("description_failed")
+                and stage_idx(st["stage"]) >= stage_idx("transcribed")):
+            st = self._describe(key, st, course, seminar, part, tv, out_dir, names)
+        if st.get("description"):
+            description = st["description"]
+
         # 3) repo
         if stage_idx(st["stage"]) < stage_idx("committed"):
             self._write_outputs(course, seminar, part, Path(st["result_json"]), out_dir, names, rec,
                                 video_id=st.get("video_id"), title=title)
             msg = self.cfg.git.commit_template.format(**tv)
-            sha = self._commit(course, [out_dir / n for n in names.values()], msg)
+            sha = self._commit(course, [out_dir / n for n in names.values() if (out_dir / n).exists()], msg)
             st = self.state.upsert(key, stage="committed", commit=sha, problem=None)
             self.log(f"  ✓ repo: {out_dir.relative_to(course.repo)} ({sha or 'muutusteta'})")
 
@@ -232,8 +245,33 @@ class Pipeline:
                 added = yt.ensure_in_playlist(self.youtube(), pid, st["video_id"])
                 self.log(f"  ✓ esitusloend {pid}: " + ("lisatud" if added else "juba olemas"))
             self.state.upsert(key, stage="done", problem=None, problem_kind=None)
+            st = self.state.get(key)
+
+        # 7) kirjeldus videole (ka olemasolevale `attach`-videole), kui see on genereeritud ja pole veel saadetud
+        if (st.get("video_id") and st.get("description") and not st.get("description_pushed")
+                and (not st.get("existing_video_id") or self.cfg.describe.update_attached)):
+            yt.update_description(self.youtube(), st["video_id"], st["description"])
+            self.state.upsert(key, description_pushed=True)
+            self.log("  ✓ kirjeldus ja peatükid videole lisatud")
 
     # --- alamsammud ---------------------------------------------------------------
+    def _describe(self, key, st, course, seminar, part, tv, out_dir: Path, names: dict) -> dict:
+        try:
+            words, _ = subtitles.load_words(Path(st["result_json"]))
+            gen = self.deps.describe or (lambda *a, **k: describe_mod.generate(self.cfg.describe, *a, log=self.log, **k))
+            d = gen(words, course.course, seminar.title, seminar.date.isoformat(), part)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"  HOIATUS: kirjeldust ei saanud genereerida ({e}) – kasutan malli")
+            return self.state.upsert(key, description_failed=str(e)[:300])
+        header = f"{course.course}, {tv['seminar_title']} ({tv['date_et']})"
+        foot = [tv.get("materials_line", ""),
+                "Subtiitrid on loodud automaatselt TalTechi eesti keele kõnetuvastusega ja võivad sisaldada vigu."]
+        text = describe_mod.render(d, header, foot)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / names["desc"]).write_text(f"# {header}\n\n" + text.split("\n", 2)[-1] + "\n", encoding="utf-8")
+        self.log(f"  ✓ kirjeldus: {len(d['chapters'])} peatükki")
+        return self.state.upsert(key, description=text, description_pushed=False)
+
     def _write_outputs(self, course, seminar, part, result_json: Path, out_dir: Path, names: dict,
                        rec: Recording, video_id: str | None, title: str) -> None:
         words, speakers = subtitles.load_words(result_json)

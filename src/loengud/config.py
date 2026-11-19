@@ -37,6 +37,10 @@ class AsrConfig:
     whisper_model: str = "~/tools/whisper-models/taltech-et-verbatim-ggml.bin"
     whisper_threads: int = 6
     whisper_extra_args: list[str] = field(default_factory=list)
+    # Silero VAD (whisper.cpp --vad): jätab vahele mittekõne/taustamüra → vähem hallutsinatsioone ja tsükleid
+    whisper_vad_model: str | None = "~/tools/whisper-models/ggml-silero-v6.2.0.bin"
+    # Mitu eelmise teksti tokenit antakse kontekstiks (väiksem = vähem korduvaid tsükleid; -1 = vaikimisi)
+    whisper_max_context: int = 64
     # Kohalik kloon (soovitatud, versioon lukus) või "taltechnlp/est-asr-pipeline".
     pipeline: str = "~/tools/est-asr-pipeline"
     nextflow_bin: str = "nextflow"
@@ -65,6 +69,16 @@ class YoutubeConfig:
 
 
 @dataclass
+class DescribeConfig:
+    """Videokirjeldus + peatükid transkriptsioonist keelemudeliga (vaikimisi Claude Code: `claude -p`)."""
+    enabled: bool = True
+    command: list[str] = field(default_factory=lambda: ["claude", "-p", "--output-format", "text"])
+    timeout_s: int = 600
+    # Kas uuendada ka juba üles laaditud (`loengud attach`) video kirjeldust
+    update_attached: bool = True
+
+
+@dataclass
 class GitConfig:
     push: bool = True
     pull_before: bool = True
@@ -89,6 +103,7 @@ class Config:
     youtube: YoutubeConfig
     git: GitConfig
     timetable: TimetableConfig
+    describe: DescribeConfig
     work_dir: Path
     state_file: Path
     path: Path | None = None
@@ -134,6 +149,7 @@ def load_config(path: Path | None = None) -> Config:
         youtube=yt,
         git=_merge(GitConfig, raw.get("git")),
         timetable=TimetableConfig(**tt),
+        describe=_merge(DescribeConfig, raw.get("describe")),
         work_dir=work_dir,
         state_file=_p(raw.get("state_file", "~/.config/loengud/state.json")),
         path=path,
@@ -167,6 +183,8 @@ asr:
   whisper_bin: whisper-cli
   whisper_model: "~/tools/whisper-models/taltech-et-verbatim-ggml.bin"
   whisper_threads: 6
+  whisper_vad_model: "~/tools/whisper-models/ggml-silero-v6.2.0.bin"   # null = VAD välja
+  whisper_max_context: 64
   # kaldi: git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipeline
   pipeline: "~/tools/est-asr-pipeline"
   nextflow_bin: nextflow
@@ -196,6 +214,12 @@ timetable:
   teacher_id: 435              # Kalberg, Juho (start.hk.tlu.ee tunniplaan)
   semester_start: "2026-08-24"
   semester_end: "2027-01-24"
+
+# Videokirjeldus + peatükid transkriptsioonist (Claude Code peata režiimis)
+describe:
+  enabled: true
+  command: ["claude", "-p", "--output-format", "text"]
+  update_attached: true
 
 git:
   push: true

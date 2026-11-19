@@ -153,3 +153,17 @@ def ensure_in_playlist(service, playlist_id: str, video_id: str) -> bool:
     service.playlistItems().insert(part="snippet", body={"snippet": {
         "playlistId": playlist_id, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}).execute()
     return True
+
+
+def update_description(service, video_id: str, description: str) -> None:
+    """Uuenda ainult kirjeldust; pealkiri, kategooria ja sildid jäävad samaks."""
+    cur = service.videos().list(part="snippet", id=video_id).execute().get("items", [])
+    if not cur:
+        raise YoutubeError(f"Videot {video_id} ei leitud.")
+    snip = cur[0]["snippet"]
+    body = {"id": video_id, "snippet": {
+        "title": snip["title"], "categoryId": snip.get("categoryId", "27"),
+        "description": description[:4900], "tags": snip.get("tags", []),
+        "defaultLanguage": snip.get("defaultLanguage", "et"),
+    }}
+    service.videos().update(part="snippet", body=body).execute()

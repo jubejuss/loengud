@@ -62,7 +62,18 @@ curl -L -o ~/tools/whisper-models/taltech-et-verbatim-ggml.bin \
   https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604/resolve/main/ggml/ggml-model.bin   # ~1,6 GB
 ```
 
-`config.yaml` → `asr.engine: whispercpp`. Kaldi (`engine: kaldi`) jääb varuvariandiks (Inteli iMac).
+VAD (Silero; jätab vahele taustamüra ja vaikuse → vähem hallutsinatsioone):
+
+```bash
+curl -L -o ~/tools/whisper-models/ggml-silero-v6.2.0.bin \
+  https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin
+```
+
+`config.yaml` → `asr.engine: whispercpp`, `asr.whisper_vad_model`. Lisaks eemaldatakse järeltöötluses Whisperi kordustsüklid. Kaldi (`engine: kaldi`) jääb varuvariandiks (Inteli iMac).
+
+### 1c. Videokirjeldus ja peatükid
+
+Pärast transkriptsiooni koostab keelemudel kokkuvõtte ja YouTube'i peatükid (`describe.command`, vaikimisi Claude Code: `claude -p`). Tulemus läheb video kirjeldusse ja faili `salvestus/kirjeldus.md`. Üliõpilaste nimesid ei kasutata. Ebaõnnestumisel kasutatakse kirjelduse malli.
 
 ### 2. Tööriist
 

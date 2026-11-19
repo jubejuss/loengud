@@ -70,7 +70,7 @@ class FakeYouTube:
                 return Up()
 
             def list(self, part, id):
-                return _Req(lambda: {"items": [{"snippet": {"categoryId": "27"}, "status": {}}]})
+                return _Req(lambda: {"items": [{"snippet": {"categoryId": "27", "title": "x"}, "status": {}}]})
 
             def update(self, part, body):
                 return _Req(lambda: yt.updated.append(body) or {})
@@ -117,6 +117,10 @@ state_file: "{tmp_path / 'state.json'}"
     return load_config(cfg)
 
 
+def fake_describe(words, course, seminar, date, part):
+    return {"summary": "Seminaris räägiti CSS Gridist.", "chapters": [(0, "Algus"), (60, "Grid"), (120, "Küsimused")]}
+
+
 def fake_asr(video, job_dir):
     out = job_dir / "result" / "result.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -145,7 +149,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     cfg = write_config(tmp_path, lecture_repo, rec_dir, mode)
     fake = FakeYouTube()
     logs = []
-    p = Pipeline(cfg, Deps(transcribe=fake_asr, youtube_service=lambda: fake, log=logs.append))
+    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append))
 
     problems = p.run()
     assert problems == 1  # sobitamatu salvestus
@@ -161,7 +165,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
         assert staged.exists() and staged.name.startswith("Veebiarendus (RIF25) – Seminar 4 - CSS Grid")
         # kasutaja laeb Studiosse; YouTube paneb pealkirjaks failinime
         fake.uploads.append({"id": "studio1", "title": staged.stem})
-        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, youtube_service=lambda: fake, log=logs.append))
+        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append))
         p2.run()
         st = p2.state.get(str(rec))
         assert not staged.exists()
@@ -177,10 +181,13 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     md = (out / "transkriptsioon.md").read_text()
     assert f"https://youtu.be/{vid}?t=" in md
     assert "videolink" in remote_log(lecture_repo)
+    assert (out / "kirjeldus.md").exists()
+    descs = [u["snippet"]["description"] for u in fake.updated if "description" in u.get("snippet", {})]
+    assert any("0:00 Algus" in d and "1:00 Grid" in d and "Seminaris räägiti" in d for d in descs)
 
     # idempotentsus: teine käivitus ei tee midagi uut
     before = remote_log(lecture_repo)
-    Pipeline(cfg, Deps(transcribe=fake_asr, youtube_service=lambda: fake, log=logs.append)).run()
+    Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, youtube_service=lambda: fake, log=logs.append)).run()
     assert remote_log(lecture_repo) == before
     assert fake.inserted_videos == (1 if mode == "api" else 0)
 
