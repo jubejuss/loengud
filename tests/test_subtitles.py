@@ -80,3 +80,16 @@ def test_whispercpp_json_conversion():
     assert words[2].start == 5.0 and words[2].turn != words[1].turn
     cues = subtitles.segment(words)
     assert cues[0].text == "Tere tulemast."
+
+
+def test_whispercpp_collapsed_timestamps_are_spread():
+    from loengud.asr import whisper_json_to_result
+    seg = [{"offsets": {"from": 1000, "to": 1000}, "text": f" sõna{i}"} for i in range(10)]
+    seg.append({"offsets": {"from": 1000, "to": 3000}, "text": " lõpp."})
+    seg.append({"offsets": {"from": 3100, "to": 3500}, "text": " Järgmine"})
+    words, _ = subtitles.load_words(whisper_json_to_result({"transcription": seg}))
+    starts = [w.start for w in words]
+    assert starts == sorted(starts) and len(set(starts)) == len(starts)
+    assert all(w.end > w.start for w in words)
+    for c in subtitles.segment(words):
+        assert c.end > c.start

@@ -114,6 +114,25 @@ def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
 
 # --- whisper.cpp (TalTechNLP/whisper-large-v3-turbo-et-verbatim GGML) ---------------------------
 
+def _spread_collapsed(words: list[dict], min_word: float = 0.12) -> None:
+    """Whisper annab vahel kümnetele sõnadele sama ajatempli → jaota need ühtlaselt naabrite vahele."""
+    i, n = 0, len(words)
+    while i < n:
+        j = i
+        while j + 1 < n and abs(words[j + 1]["start"] - words[i]["start"]) < 1e-3:
+            j += 1
+        if j > i:  # sõnad i..j on sama algusega
+            lo = words[i]["start"]
+            hi = max(words[j]["end"], words[j + 1]["start"] if j + 1 < n else words[j]["end"])
+            if hi - lo < (j - i + 1) * min_word:
+                hi = lo + (j - i + 1) * min_word
+            step = (hi - lo) / (j - i + 1)
+            for k in range(i, j + 1):
+                words[k]["start"] = round(lo + (k - i) * step, 3)
+                words[k]["end"] = round(lo + (k - i + 1) * step, 3)
+        i = j + 1
+
+
 def whisper_json_to_result(wj: dict, new_turn_gap: float = 2.0) -> dict:
     """whisper.cpp JSON (-ml 1 -sow → üks sõna segmendi kohta) → est-asr result.json formaat."""
     words = []
@@ -127,6 +146,7 @@ def whisper_json_to_result(wj: dict, new_turn_gap: float = 2.0) -> dict:
             end = start + 0.2
         words.append({"word": text.strip(".,!?;:").lower(), "word_with_punctuation": text,
                       "start": round(start, 3), "end": round(end, 3)})
+    _spread_collapsed(words)
     turns, cur = [], []
     for w in words:
         if cur and w["start"] - cur[-1]["end"] > new_turn_gap:
