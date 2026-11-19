@@ -106,7 +106,14 @@ seminarid/04-css-grid/salvestus/
 
 Kui ühest seminarist on mitu salvestust (Teams jagab pika salvestuse või salvestus käivitati uuesti), saavad järgmised failid nime `transkriptsioon-2.md` ja video pealkirja lõppu „(osa 2)“.
 
-**Sobitamise reeglid:** salvestuse algusaeg võetakse Teamsi failinimest (`…-20261119_081530-Meeting Recording.mp4`), varuvariandina ffprobe'ist või faili ajast. Seejärel otsitakse kõigist repodest seminar sama kuupäevaga. Kui samal päeval sobib mitu, kitsendatakse valikut `match_title` ja seejärel kellaaja (`time` / `default_time`, ±45 min) järgi. Kui seminari ei leita või neid on mitu, jääb salvestus ootele ja `loengud status` näitab põhjust.
+**Sobitamine (järjekorras):**
+1. **Tunniplaan** (`config.yaml` → `timetable.teacher_id`): salvestuse algusaeg → tund TLÜ HK tunniplaanis → ainekood (nt `HKI5113.HK`) → kursuse repo (`subject_codes` või repo `metadata/data.json` → `code`). Seminari number = aine mitmes toimumiskord semestris, kaust = `seminar_dir_pattern` (vaikimisi `seminarid/seminar_{n:02d}`). Kontrolli: `loengud tunniplaan`.
+2. **Teamsi pealkiri**: `match_titles` (nt `["SJTA", "Sissejuhatus tarkvara"]`) + number pealkirja lõpus („SJTA 3“). Pealkirja number on alati eelistatud.
+3. **Kuupäevaajakava** `seminars:` all (vana viis, varuvariant).
+
+Juba YouTube'i laaditud video sidumine (ei laadi uuesti üles, lisab subtiitrid + esitusloendid): `loengud attach "<fail.mp4>" --video <ID või URL>`.
+
+**Vanad sobitamise reeglid (ajakava):** salvestuse algusaeg võetakse Teamsi failinimest (`…-20261119_081530-Meeting Recording.mp4`), varuvariandina ffprobe'ist või faili ajast. Seejärel otsitakse kõigist repodest seminar sama kuupäevaga. Kui samal päeval sobib mitu, kitsendatakse valikut `match_title` ja seejärel kellaaja (`time` / `default_time`, ±45 min) järgi. Kui seminari ei leita või neid on mitu, jääb salvestus ootele ja `loengud status` näitab põhjust.
 
 > Kontrolli esimese salvestuse peal `loengud scan` väljundist, kas kellaaeg klapib. Kui see on 2 tundi nihkes, muuda `source.filename_tz` väärtust (`UTC` ↔ `Europe/Tallinn`).
 

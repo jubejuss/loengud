@@ -105,6 +105,25 @@ def cmd_assign(args) -> int:
     return 0
 
 
+def cmd_attach(args) -> int:
+    _pipeline(args).attach_video(Path(args.recording).expanduser(), args.video)
+    print("Seotud. `loengud run --only …` lisab sellele videole subtiitrid ja esitusloendid.")
+    return 0
+
+
+def cmd_timetable(args) -> int:
+    from . import tunniplaan
+    cfg = load_config(args.config_path)
+    tt = cfg.timetable
+    if not (tt.teacher_id and tt.semester_start and tt.semester_end):
+        print("Seadista config.yaml → timetable (teacher_id, semester_start, semester_end).")
+        return 2
+    sessions = tunniplaan.fetch(tt.teacher_id, tt.semester_start, tt.semester_end, tt.url)
+    for s in sessions:
+        print(f"{s.date} {s.start}-{s.end}  {s.code:<11} #{tunniplaan.ordinal(sessions, s):<2} {s.subject}  [{s.group}]")
+    return 0
+
+
 def cmd_ignore(args) -> int:
     _pipeline(args).ignore(Path(args.recording).expanduser())
     print("Ignoreeritud.")
@@ -204,6 +223,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--seminar", required=True, help="seminari kaust .loengud.yaml-ist, nt seminarid/04-css-grid")
     s.add_argument("--part", type=int)
     s.set_defaults(fn=cmd_assign)
+
+    s = sub.add_parser("attach", help="seo salvestus juba YouTube'is oleva videoga (subtiitrid + esitusloendid)")
+    s.add_argument("recording")
+    s.add_argument("--video", required=True, help="video ID või URL")
+    s.set_defaults(fn=cmd_attach)
+
+    sub.add_parser("tunniplaan", help="näita õppejõu tunniplaani ja seminaride numbreid").set_defaults(fn=cmd_timetable)
 
     s = sub.add_parser("ignore", help="jäta salvestus vahele")
     s.add_argument("recording")

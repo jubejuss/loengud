@@ -14,7 +14,8 @@ from . import asr as asr_mod
 from . import gitops, subtitles
 from . import youtube as yt
 from .config import Config
-from .schedule import Course, MatchError, find_seminar, load_courses, match_recording, template_vars
+from .schedule import Course, MatchError, Seminar, find_seminar, load_courses, match_smart, template_vars
+from . import tunniplaan
 from .source import Recording, discover
 from .state import STAGES, State
 
@@ -55,6 +56,27 @@ class Pipeline:
         self.state = State(cfg.state_file)
         self.courses, self.course_errors = load_courses(cfg.repos)
         self._yt = None
+        self._sessions = None
+
+    def sessions(self):
+        """Tunniplaan (vahemälus). Kui pole seadistatud või võrk ei vasta → None (varuvariandid)."""
+        tt = self.cfg.timetable
+        if self._sessions is None and tt.teacher_id and tt.semester_start and tt.semester_end:
+            try:
+                self._sessions = tunniplaan.load_cached(self.cfg.work_dir / "tunniplaan.json", tt.teacher_id,
+                                                        tt.semester_start, tt.semester_end, tt.url, tt.cache_hours)
+            except Exception as e:  # noqa: BLE001
+                self.log(f"HOIATUS: tunniplaani ei saanud laadida ({e}) – sobitan pealkirja/ajakava järgi")
+                self._sessions = []
+        return self._sessions or None
+
+    def seminar_from_state(self, course: Course, st: dict) -> Seminar:
+        try:
+            return find_seminar(course, st["seminar_dir"])
+        except KeyError:
+            from datetime import date as _d
+            return Seminar(date=_d.fromisoformat(st["seminar_date"]), dir=st["seminar_dir"],
+                           title=st.get("seminar_title") or st["seminar_dir"], number=st.get("seminar_number"))
 
     # --- abid ----------------------------------------------------------------
     def course_by_repo(self, repo: str) -> Course:
@@ -120,7 +142,7 @@ class Pipeline:
         # 1) sobitamine
         if not st.get("repo"):
             try:
-                m = match_recording(self.courses, rec.start, rec.meeting_title)
+                m = match_smart(self.courses, rec.start, rec.meeting_title, self.sessions(), self.cfg.timezone)
             except MatchError as e:
                 self.state.upsert(key, problem=str(e), problem_kind=e.kind,
                                   candidates=[f"{c.course.repo}:{c.seminar.dir}" for c in e.candidates])
@@ -132,9 +154,11 @@ class Pipeline:
                 self.log(f"  → {m.course.course}: {m.seminar.title} [{m.seminar.dir}] osa {part} (kuivkäivitus)")
                 return
             st = self.state.upsert(key, repo=str(m.course.repo), seminar_dir=m.seminar.dir, part=part,
+                                   seminar_title=m.seminar.title, seminar_date=m.seminar.date.isoformat(),
+                                   seminar_number=m.seminar.number,
                                    stage="matched", problem=None, problem_kind=None)
         course = self.course_by_repo(st["repo"])
-        seminar = find_seminar(course, st["seminar_dir"])
+        seminar = self.seminar_from_state(course, st)
         part = st.get("part", 1)
         tv = template_vars(course, seminar, part)
         title = course.title_template.format(**tv)
@@ -166,7 +190,10 @@ class Pipeline:
 
         # 4) YouTube video
         if stage_idx(st["stage"]) < stage_idx("uploaded"):
-            if self.cfg.youtube.upload_mode == "api":
+            if st.get("existing_video_id"):
+                vid = st["existing_video_id"]
+                self.log(f"  olemasolev video {vid} – pealkirja/kirjeldust ei muuda")
+            elif self.cfg.youtube.upload_mode == "api":
                 self.log("  YouTube: laen video üles…")
                 vid = yt.upload_video(self.youtube(), rec.path, title, description, self.cfg.youtube, log=self.log)
             else:
@@ -241,16 +268,32 @@ class Pipeline:
         return vid
 
     # --- käsitsi sekkumine ---------------------------------------------------------
+    def attach_video(self, recording: Path, video_id: str) -> None:
+        """Seo salvestus juba YouTube'is oleva videoga (ei laadi üles, ei muuda pealkirja)."""
+        self.scan()
+        key = str(recording)
+        if not self.state.get(key):
+            raise KeyError(f"Salvestust {recording} ei leitud.")
+        vid = video_id.split("v=")[-1].split("/")[-1].split("?")[0].split("&")[0]
+        self.state.upsert(key, existing_video_id=vid)
+
     def assign(self, recording: Path, repo: Path, seminar_dir: str, part: int | None = None) -> None:
         course = self.course_by_repo(str(repo.expanduser()))
-        find_seminar(course, seminar_dir)
+        from .schedule import seminar_for_number  # noqa: F401
+        try:
+            sem = find_seminar(course, seminar_dir)
+        except KeyError:
+            sem = None
         self.scan()
         key = str(recording)
         if not self.state.get(key):
             raise KeyError(f"Salvestust {recording} ei leitud (kas see on `recordings_dirs` all ja piisavalt vana?)")
         parts = self.state.parts_for(str(course.repo), seminar_dir.strip("/"), key)
+        rec_start = (self.state.get(key) or {}).get("start", "")[:10]
         self.state.upsert(key, repo=str(course.repo), seminar_dir=seminar_dir.strip("/"),
                           part=part or ((max(parts) + 1) if parts else 1),
+                          seminar_title=sem.title if sem else seminar_dir.strip("/").split("/")[-1],
+                          seminar_date=(sem.date.isoformat() if sem else rec_start),
                           stage="matched", problem=None, problem_kind=None)
 
     def ignore(self, recording: Path) -> None:

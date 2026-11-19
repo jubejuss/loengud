@@ -65,6 +65,15 @@ class GitConfig:
 
 
 @dataclass
+class TimetableConfig:
+    teacher_id: int | None = None      # Kalberg, Juho = 435
+    url: str = "https://start.hk.tlu.ee/sahtelbeta/tunniplaan/tunniplaan.php"
+    semester_start: date | None = None
+    semester_end: date | None = None
+    cache_hours: float = 12
+
+
+@dataclass
 class Config:
     timezone: str
     source: SourceConfig
@@ -72,6 +81,7 @@ class Config:
     asr: AsrConfig
     youtube: YoutubeConfig
     git: GitConfig
+    timetable: TimetableConfig
     work_dir: Path
     state_file: Path
     path: Path | None = None
@@ -105,6 +115,10 @@ def load_config(path: Path | None = None) -> Config:
         raise ValueError("youtube.upload_mode peab olema 'studio' või 'api'")
 
     work_dir = _p(raw.get("work_dir", "~/Library/Caches/loengud"))
+    tt = dict(raw.get("timetable") or {})
+    for k in ("semester_start", "semester_end"):
+        if isinstance(tt.get(k), str):
+            tt[k] = date.fromisoformat(tt[k])
     return Config(
         timezone=raw.get("timezone", "Europe/Tallinn"),
         source=source,
@@ -112,6 +126,7 @@ def load_config(path: Path | None = None) -> Config:
         asr=_merge(AsrConfig, raw.get("asr")),
         youtube=yt,
         git=_merge(GitConfig, raw.get("git")),
+        timetable=TimetableConfig(**tt),
         work_dir=work_dir,
         state_file=_p(raw.get("state_file", "~/.config/loengud/state.json")),
         path=path,
@@ -162,6 +177,12 @@ youtube:
   # Iga loeng lisatakse ka nendesse esitusloenditesse (lisaks kursuse omale):
   common_playlist_ids:
     - "PL2lxpfi7Jl2uqRbh4Ew7v0jdKjteolb4_"   # Haapsalu kolledž
+
+# TLÜ Haapsalu kolledži tunniplaan: aeg → aine (kood) → kursuse repo, seminari nr = mitmes toimumiskord
+timetable:
+  teacher_id: 435              # Kalberg, Juho (start.hk.tlu.ee tunniplaan)
+  semester_start: "2026-08-24"
+  semester_end: "2027-01-24"
 
 git:
   push: true
