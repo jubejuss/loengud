@@ -110,3 +110,63 @@ def transcribe(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
     if not cfg.keep_work:
         shutil.rmtree(run_dir / "work", ignore_errors=True)
     return result_json
+
+
+# --- whisper.cpp (TalTechNLP/whisper-large-v3-turbo-et-verbatim GGML) ---------------------------
+
+def whisper_json_to_result(wj: dict, new_turn_gap: float = 2.0) -> dict:
+    """whisper.cpp JSON (-ml 1 -sow → üks sõna segmendi kohta) → est-asr result.json formaat."""
+    words = []
+    for seg in wj.get("transcription", []):
+        text = (seg.get("text") or "").strip()
+        if not text or text.startswith("[") or text.startswith("("):
+            continue
+        off = seg.get("offsets") or {}
+        start, end = off.get("from", 0) / 1000.0, off.get("to", 0) / 1000.0
+        if end <= start:
+            end = start + 0.2
+        words.append({"word": text.strip(".,!?;:").lower(), "word_with_punctuation": text,
+                      "start": round(start, 3), "end": round(end, 3)})
+    turns, cur = [], []
+    for w in words:
+        if cur and w["start"] - cur[-1]["end"] > new_turn_gap:
+            turns.append(cur)
+            cur = []
+        cur.append(w)
+    if cur:
+        turns.append(cur)
+    tjs = [{"speaker": "S1", "start": t[0]["start"], "end": t[-1]["end"],
+            "transcript": " ".join(w["word_with_punctuation"] for w in t), "words": t} for t in turns]
+    end = tjs[-1]["end"] if tjs else 0
+    return {"speakers": {"S1": {}}, "sections": [{"type": "speech", "start": 0, "end": end, "turns": tjs}]}
+
+
+def transcribe_whispercpp(cfg: AsrConfig, wav: Path, job_dir: Path, log=print) -> Path:
+    import json
+    out_dir = job_dir / "result"
+    result_json = out_dir / "result.json"
+    if result_json.exists() and has_words(result_json):
+        return result_json
+    out_dir.mkdir(parents=True, exist_ok=True)
+    model = Path(cfg.whisper_model).expanduser()
+    if not model.exists():
+        raise AsrError(f"Whisperi mudel puudub: {model} (vt README → whisper.cpp)")
+    base = out_dir / "whisper"
+    cmd = [cfg.whisper_bin, "-m", str(model), "-f", str(wav), "-l", "et", "-t", str(cfg.whisper_threads),
+           "-ml", "1", "-sow", "-oj", "-of", str(base), "-pp"] + [str(a) for a in cfg.whisper_extra_args]
+    log("ASR (whisper.cpp): " + " ".join(cmd))
+    with open(job_dir / "asr.log", "w", encoding="utf-8") as logf:
+        try:
+            r = subprocess.run(cmd, stdout=logf, stderr=subprocess.STDOUT, timeout=cfg.timeout_hours * 3600)
+        except FileNotFoundError as e:
+            raise AsrError(f"{cfg.whisper_bin} puudub (brew install whisper-cpp): {e}") from e
+    wj_path = base.with_suffix(".json")
+    if r.returncode != 0 or not wj_path.exists():
+        tail = (job_dir / "asr.log").read_text(encoding="utf-8", errors="replace")[-1500:]
+        raise AsrError(f"whisper.cpp ebaõnnestus (kood {r.returncode}). Logi lõpp:\n{tail}")
+    result = whisper_json_to_result(json.loads(wj_path.read_text(encoding="utf-8", errors="replace")))
+    result_json.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    if not has_words(result_json):
+        result_json.rename(out_dir / f"result.empty-{int(__import__('time').time())}.json")
+        raise AsrError("whisper.cpp andis tühja tulemuse – kontrolli, kas salvestusel on heli.")
+    return result_json

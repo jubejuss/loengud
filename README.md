@@ -50,6 +50,20 @@ docker pull --platform linux/amd64 alumae/est-asr-pipeline:0.1.4
 
 **Apple Silicon (M1 MacBook):** Dockeri pilt on ainult x86_64, seega jookseb see emulatsioonis ja on aeglane. Lisa seadistusse `asr.docker_run_options: "--platform linux/amd64 --memory=10g"`. **Inteli iMac** käitab pilti natiivselt ja on ASR-i jaoks parem valik. Mõõda esimese loengu peal, kui kaua see võtab: `~/loengud-work/<id>/asr.log`.
 
+### 1b. Kiirem ASR Apple Silicon'is: whisper.cpp + TalTechi mudel (soovitatud)
+
+Kaldi-pipeline jookseb M1-l x86 emulatsioonis ja on aeglane. TalTech on avaldanud eesti keele Whisperi mudeli
+`TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604` ka whisper.cpp (GGML) formaadis – see jookseb natiivselt Metal-GPU-l.
+
+```bash
+brew install whisper-cpp
+mkdir -p ~/tools/whisper-models
+curl -L -o ~/tools/whisper-models/taltech-et-verbatim-ggml.bin \
+  https://huggingface.co/TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604/resolve/main/ggml/ggml-model.bin   # ~1,6 GB
+```
+
+`config.yaml` → `asr.engine: whispercpp`. Kaldi (`engine: kaldi`) jääb varuvariandiks (Inteli iMac).
+
 ### 2. Tööriist
 
 ```bash

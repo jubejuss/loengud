@@ -167,21 +167,26 @@ def cmd_doctor(args) -> int:
     except Exception as e:  # noqa: BLE001
         check("seadistus", False, str(e))
         return 1
-    check(f"nextflow ({cfg.asr.nextflow_bin})", shutil.which(cfg.asr.nextflow_bin) or Path(cfg.asr.nextflow_bin).expanduser().exists(),
-          "curl -s https://get.nextflow.io | bash && mv nextflow ~/.local/bin/")
-    pl = Path(cfg.asr.pipeline).expanduser()
-    check(f"est-asr-pipeline: {pl}", pl.exists() or "/" in cfg.asr.pipeline and not cfg.asr.pipeline.startswith(("~", "/")),
-          "git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipeline")
-    if shutil.which("docker"):
-        r = subprocess.run(["docker", "image", "inspect", "alumae/est-asr-pipeline:0.1.4"], capture_output=True)
-        check("Docker pilt alumae/est-asr-pipeline:0.1.4", r.returncode == 0,
-              "docker pull --platform linux/amd64 alumae/est-asr-pipeline:0.1.4")
-    if sys.platform == "darwin":
-        arm = subprocess.run(["uname", "-m"], capture_output=True, text=True).stdout.strip() == "arm64"
-        if arm:
-            check("Apple Silicon: asr.docker_run_options sisaldab --platform linux/amd64",
-                  cfg.asr.docker_run_options and "linux/amd64" in cfg.asr.docker_run_options,
-                  'asr.docker_run_options: "--platform linux/amd64 --memory=10g"')
+    if cfg.asr.engine == "whispercpp":
+        check(f"whisper.cpp ({cfg.asr.whisper_bin})", shutil.which(cfg.asr.whisper_bin), "brew install whisper-cpp")
+        check(f"Whisperi mudel: {Path(cfg.asr.whisper_model).expanduser()}", Path(cfg.asr.whisper_model).expanduser().exists(),
+              "vt README → whisper.cpp (TalTechNLP/whisper-large-v3-turbo-et-verbatim-2604 ggml)")
+    else:
+        check(f"nextflow ({cfg.asr.nextflow_bin})", shutil.which(cfg.asr.nextflow_bin) or Path(cfg.asr.nextflow_bin).expanduser().exists(),
+              "curl -s https://get.nextflow.io | bash && mv nextflow ~/.local/bin/")
+        pl = Path(cfg.asr.pipeline).expanduser()
+        check(f"est-asr-pipeline: {pl}", pl.exists() or "/" in cfg.asr.pipeline and not cfg.asr.pipeline.startswith(("~", "/")),
+              "git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipeline")
+        if shutil.which("docker"):
+            r = subprocess.run(["docker", "image", "inspect", "alumae/est-asr-pipeline:0.1.4"], capture_output=True)
+            check("Docker pilt alumae/est-asr-pipeline:0.1.4", r.returncode == 0,
+                  "docker pull --platform linux/amd64 alumae/est-asr-pipeline:0.1.4")
+        if sys.platform == "darwin":
+            arm = subprocess.run(["uname", "-m"], capture_output=True, text=True).stdout.strip() == "arm64"
+            if arm:
+                check("Apple Silicon: asr.docker_run_options sisaldab --platform linux/amd64",
+                      cfg.asr.docker_run_options and "linux/amd64" in cfg.asr.docker_run_options,
+                      'asr.docker_run_options: "--platform linux/amd64 --memory=10g"')
     for d in cfg.source.recordings_dirs:
         check(f"salvestuste kaust: {d}", d.exists(), "kontrolli OneDrive'i sünki ja tee nime")
     for r in cfg.repos:

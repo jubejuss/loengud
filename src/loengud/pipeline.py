@@ -94,7 +94,10 @@ class Pipeline:
         if self.deps.transcribe:
             return self.deps.transcribe(video, job_dir)
         wav = asr_mod.extract_audio(video, job_dir / "lecture_16k.wav")  # mitte audio.wav: pipeline to_wav kirjutab sellenimelise väljundi
-        result = asr_mod.transcribe(self.cfg.asr, wav, job_dir, log=self.log)
+        if self.cfg.asr.engine == "whispercpp":
+            result = asr_mod.transcribe_whispercpp(self.cfg.asr, wav, job_dir, log=self.log)
+        else:
+            result = asr_mod.transcribe(self.cfg.asr, wav, job_dir, log=self.log)
         wav.unlink(missing_ok=True)
         return result
 
@@ -249,7 +252,8 @@ class Pipeline:
             "duration": subtitles.hms(words[-1].end),
             "recorded": rec.start.isoformat(timespec="minutes"),
             "source_file": rec.path.name,
-            "asr": "TalTech est-asr-pipeline (tekstiks.ee mootor)",
+            "asr": ("TalTech whisper-large-v3-turbo-et-verbatim (whisper.cpp)" if self.cfg.asr.engine == "whispercpp"
+                    else "TalTech est-asr-pipeline (tekstiks.ee mootor)"),
             "generated": datetime.now().astimezone().isoformat(timespec="minutes"),
         }
         (out_dir / names["md"]).write_text(subtitles.to_markdown(words, speakers, meta, video_id), encoding="utf-8")

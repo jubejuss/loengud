@@ -63,3 +63,20 @@ def test_wrap_prefers_balanced_split():
     s = subtitles.wrap_lines("Täna räägime CSS Gridist ja sellest, kuidas paigutust planeerida", 42)
     a, b = s.split("\n")
     assert len(a) <= 42 and len(b) <= 42
+
+
+def test_whispercpp_json_conversion():
+    from loengud.asr import whisper_json_to_result
+    wj = {"transcription": [
+        {"offsets": {"from": 0, "to": 400}, "text": " Tere"},
+        {"offsets": {"from": 400, "to": 900}, "text": " tulemast."},
+        {"offsets": {"from": 900, "to": 1000}, "text": " [MUSIC]"},
+        {"offsets": {"from": 5000, "to": 5500}, "text": " Alustame"},
+        {"offsets": {"from": 5500, "to": 6000}, "text": " Gitiga."},
+    ]}
+    res = whisper_json_to_result(wj)
+    words, _ = subtitles.load_words(res)
+    assert [w.text for w in words] == ["Tere", "tulemast.", "Alustame", "Gitiga."]
+    assert words[2].start == 5.0 and words[2].turn != words[1].turn
+    cues = subtitles.segment(words)
+    assert cues[0].text == "Tere tulemast."

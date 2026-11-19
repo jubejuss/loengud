@@ -30,6 +30,13 @@ class SourceConfig:
 
 @dataclass
 class AsrConfig:
+    # "whispercpp" = TalTechi Whisper (GGML) whisper.cpp-ga, Apple Silicon'is Metal/GPU – kiire
+    # "kaldi"      = est-asr-pipeline (Nextflow + Docker), x86; M1-l emulatsioonis aeglane
+    engine: str = "kaldi"
+    whisper_bin: str = "whisper-cli"
+    whisper_model: str = "~/tools/whisper-models/taltech-et-verbatim-ggml.bin"
+    whisper_threads: int = 6
+    whisper_extra_args: list[str] = field(default_factory=list)
     # Kohalik kloon (soovitatud, versioon lukus) või "taltechnlp/est-asr-pipeline".
     pipeline: str = "~/tools/est-asr-pipeline"
     nextflow_bin: str = "nextflow"
@@ -155,7 +162,12 @@ repos:
   - "~/Projects/loengud/rif25-veebiarendus"
 
 asr:
-  # git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipeline
+  # whispercpp (soovitatud Apple Silicon'is): brew install whisper-cpp + TalTechi GGML mudel (vt README)
+  engine: whispercpp
+  whisper_bin: whisper-cli
+  whisper_model: "~/tools/whisper-models/taltech-et-verbatim-ggml.bin"
+  whisper_threads: 6
+  # kaldi: git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipeline
   pipeline: "~/tools/est-asr-pipeline"
   nextflow_bin: nextflow
   profile: null          # väikese RAM-i korral: lowmem
