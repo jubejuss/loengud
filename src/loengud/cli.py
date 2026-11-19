@@ -120,6 +120,12 @@ def cmd_attach(args) -> int:
     return 0
 
 
+def cmd_konspekt(args) -> int:
+    k = _pipeline(args).make_konspekt(Path(args.repo), args.seminar, force=not args.if_missing)
+    print(f"Konspekt: {k}" if k else "Konspekti ei loodud (vt hoiatust ülal).")
+    return 0 if k else 1
+
+
 def cmd_timetable(args) -> int:
     from . import tunniplaan
     cfg = load_config(args.config_path)
@@ -301,6 +307,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("recording")
     s.add_argument("--video", required=True, help="video ID või URL")
     s.set_defaults(fn=cmd_attach)
+
+    s = sub.add_parser("konspekt", help="koosta (uuesti) seminari konspekt kõigi osade transkriptsioonidest")
+    s.add_argument("repo", help="kursuse repo kaust")
+    s.add_argument("seminar", help="seminari kaust repo suhtes, nt seminarid/seminar_04")
+    s.add_argument("--if-missing", action="store_true", help="ära kirjuta olemasolevat üle")
+    s.set_defaults(fn=cmd_konspekt)
 
     sub.add_parser("tunniplaan", help="näita õppejõu tunniplaani ja seminaride numbreid").set_defaults(fn=cmd_timetable)
 

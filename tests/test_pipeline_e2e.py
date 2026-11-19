@@ -153,6 +153,15 @@ def remote_log(repo):
     return subprocess.run(["git", "-C", str(repo), "log", "origin/main", "--oneline"], capture_output=True, text=True).stdout
 
 
+KONSPEKT_PROMPTS: list[str] = []
+
+
+def fake_konspekt(prompt: str) -> str:
+    KONSPEKT_PROMPTS.append(prompt)
+    body = " ".join(["Selgitus sõnadega."] * 120)
+    return f"```markdown\n# Konspekt: Seminar 4: CSS Grid\n\nSeminar keskendus Gridile.\n\n## Grid [[1@1:00]]\n\n{body}\n\n## Plaan ja tegelikkus\n\nJõuti kõik.\n```"
+
+
 @pytest.mark.parametrize("mode", ["api", "studio"])
 def test_full_flow(tmp_path, lecture_repo, mode):
     rec_dir = tmp_path / "OneDrive" / "Recordings"
@@ -161,7 +170,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     cfg = write_config(tmp_path, lecture_repo, rec_dir, mode)
     fake = FakeYouTube()
     logs = []
-    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
+    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, konspekt=fake_konspekt, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
 
     problems = p.run()
     assert problems == 1  # sobitamatu salvestus
@@ -177,7 +186,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
         assert staged.exists() and staged.name.startswith("Veebiarendus (RIF25) – Seminar 4 - CSS Grid")
         # kasutaja laeb Studiosse; YouTube paneb pealkirjaks failinime
         fake.uploads.append({"id": "studio1", "title": staged.stem})
-        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
+        p2 = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, konspekt=fake_konspekt, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append))
         p2.run()
         st = p2.state.get(str(rec))
         assert not staged.exists()
@@ -204,14 +213,21 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     readme = (lecture_repo / "seminarid/04-css-grid/README.md").read_text()
     assert readme.startswith("# Seminar 4\n\n<!-- loengud:videod")
     assert f"[YouTube](https://youtu.be/{vid})" in readme and "(salvestus/transkriptsioon.md)" in readme
-    assert "salvestuse lingid" in remote_log(lecture_repo)
+    assert "salvestuse lingid ja konspekt" in remote_log(lecture_repo)
+    k = (out / "konspekt.md").read_text()
+    assert k.startswith("<!-- loengud:konspekt osad=1 ")
+    assert f"## Grid [▶ 1:00](https://youtu.be/{vid}?t=60)" in k and "```" not in k
+    assert "[Konspekt: mida seminaris räägiti](salvestus/konspekt.md)" in readme
+    assert "=== OSA 1 ===" in KONSPEKT_PROMPTS[-1] and "# Seminar 4" in KONSPEKT_PROMPTS[-1]
+    n_prompts = len(KONSPEKT_PROMPTS)
 
     # idempotentsus: teine käivitus ei tee midagi uut
     before = remote_log(lecture_repo)
-    Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append)).run()
+    Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, konspekt=fake_konspekt, discord_post=fake_post, youtube_service=lambda: fake, log=logs.append)).run()
     assert remote_log(lecture_repo) == before
     assert len([p for p in POSTS if f"youtu.be/{vid}" in p[1]["content"]]) == 1
     assert fake.inserted_videos == (1 if mode == "api" else 0)
+    assert len(KONSPEKT_PROMPTS) == n_prompts  # konspekti ei koostata uuesti
 
 
 def test_second_recording_same_seminar_becomes_part_2(tmp_path, lecture_repo):
@@ -220,9 +236,18 @@ def test_second_recording_same_seminar_becomes_part_2(tmp_path, lecture_repo):
     make_recording(rec_dir, "RIF25-20261119_100500-Meeting Recording.mp4")
     cfg = write_config(tmp_path, lecture_repo, rec_dir, "api")
     fake = FakeYouTube()
-    Pipeline(cfg, Deps(transcribe=fake_asr, youtube_service=lambda: fake, log=lambda m: None)).run()
+    p = Pipeline(cfg, Deps(transcribe=fake_asr, konspekt=fake_konspekt, youtube_service=lambda: fake, log=lambda m: None))
+    p.run()
     out = lecture_repo / "seminarid/04-css-grid/salvestus"
     assert (out / "transkriptsioon.md").exists() and (out / "transkriptsioon-2.md").exists()
+    k = (out / "konspekt.md").read_text()
+    assert k.startswith("<!-- loengud:konspekt osad=1,2 ")
+    assert "=== OSA 1 ===" in KONSPEKT_PROMPTS[-1] and "=== OSA 2 ===" in KONSPEKT_PROMPTS[-1]
+    assert "[▶ 1. osa 1:00](https://youtu.be/api1?t=60)" in k
+    # käsitsi muudetud konspekti ei kirjutata üle
+    (out / "konspekt.md").write_text("# Minu konspekt\n")
+    p.make_konspekt(lecture_repo, "seminarid/04-css-grid", force=False)
+    assert (out / "konspekt.md").read_text() == "# Minu konspekt\n"
     titles = [u["title"] for u in fake.uploads]
     assert any("(osa 2)" in t for t in titles)
     readme = (lecture_repo / "seminarid/04-css-grid/README.md").read_text()

@@ -76,6 +76,9 @@ class DescribeConfig:
     timeout_s: int = 600
     # Kas uuendada ka juba üles laaditud (`loengud attach`) video kirjeldust
     update_attached: bool = True
+    # Seminari konspekt (konspekt.md) kõigi osade transkriptsioonidest
+    konspekt: bool = True
+    konspekt_timeout_s: int = 1500
 
 
 @dataclass

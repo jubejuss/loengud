@@ -139,6 +139,8 @@ Kui ühest seminarist on mitu salvestust (Teams jagab pika salvestuse või salve
 1. **Tunniplaan** (`config.yaml` → `timetable.teacher_id`): salvestuse algusaeg → tund TLÜ HK tunniplaanis → ainekood (nt `HKI5113.HK`) → kursuse repo (`subject_codes` või repo `metadata/data.json` → `code`). Seminari number = aine mitmes toimumiskord semestris, kaust = `seminar_dir_pattern` (vaikimisi `seminarid/seminar_{n:02d}`). Kontrolli: `loengud tunniplaan`.
 
 **Seminari lingid:** kui video on valmis, lisab tööriist seminari kirjelduse (`seminar.md` või `README.md` seminarikaustas; teise asukoha korral `.loengud.yaml` → `seminar_md: "{n:02d}-seminar.md"`, repo juure suhtes) esimese pealkirja alla ploki YouTube'i ja transkriptsiooni linkidega. Plokk on märgendite `<!-- loengud:videod … -->` vahel ja seda uuendatakse (nt 2. osa lisandumisel); muud sisu ei muudeta.
+
+**Konspekt:** kui seminari kõik salvestused on valmis, koostab `claude -p` kõigi osade transkriptsioonidest ja seminari plaanist loetava konspekti `salvestus/konspekt.md`: kõik käsitletud teemad koos selgituste ja näidetega, viited salvestuse ajahetkedele (▶), „Lisaks plaanile“, kodutöö ning „Plaan ja tegelikkus“ (abiks järgmise aasta ettevalmistusel). Link lisatakse seminari kirjelduse plokki. Uue osa lisandumisel koostatakse uuesti; kui muudad konspekti käsitsi, kustuta faili esimene `<!-- loengud:konspekt … -->` rida – siis seda üle ei kirjutata. Käsitsi: `loengud konspekt <repo> <seminari kaust>`; välja: `describe.konspekt: false`.
 2. **Teamsi pealkiri**: `match_titles` (nt `["SJTA", "Sissejuhatus tarkvara"]`) + number pealkirja lõpus („SJTA 3“). Pealkirja number on alati eelistatud.
 3. **Kuupäevaajakava** `seminars:` all (vana viis, varuvariant).
 

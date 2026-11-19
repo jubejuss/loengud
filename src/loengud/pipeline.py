@@ -13,7 +13,7 @@ from typing import Callable
 from . import asr as asr_mod
 from . import describe as describe_mod
 from . import discord as discord_mod
-from . import gitops, seminarlinks, subtitles
+from . import gitops, konspekt as konspekt_mod, seminarlinks, subtitles
 from . import youtube as yt
 from .config import Config
 from .schedule import Course, MatchError, Seminar, find_seminar, load_courses, match_smart, template_vars
@@ -32,6 +32,7 @@ class Deps:
     discord_post: Callable[[str, dict], None] | None = None
     transcribe: Callable[[Path, Path], Path] | None = None  # (video, job_dir) -> result.json
     describe: Callable[..., dict] | None = None             # (words, course, seminar, date, part) -> {summary, chapters}
+    konspekt: Callable[[str], str] | None = None            # (prompt) -> markdown
     youtube_service: Callable[[], object] | None = None
     log: Callable[[str], None] = field(default=lambda m: print(m, flush=True))
 
@@ -289,12 +290,79 @@ class Pipeline:
                     t = out_dir / output_names(p)["md"]
                     parts.append((p, r["video_id"], t if t.exists() else None))
             parts = sorted({p[0]: p for p in parts}.values())
-            if seminarlinks.update_file(md, parts):
-                self._commit(course, [md], f"{tv['seminar_title']}: salvestuse lingid")
+            changed = []
+            kfile = self._konspekt(course, seminar, md, out_dir)
+            if seminarlinks.update_file(md, parts, konspekt=kfile):
+                changed.append(md)
                 self.log(f"  ✓ lingid: {md.relative_to(course.repo)}")
+            if kfile and kfile in self._konspekt_written:
+                changed.append(kfile)
+            if changed:
+                self._commit(course, changed, f"{tv['seminar_title']}: salvestuse lingid" + (" ja konspekt" if kfile in changed else ""))
             self.state.upsert(key, seminar_linked=str(md.relative_to(course.repo)))
         except Exception as e:  # noqa: BLE001
             self.log(f"  HOIATUS: seminari lingid: {e}")
+
+    _konspekt_written: set = set()
+
+    def seminar_recordings(self, course: Course, seminar_dir: str) -> list[dict]:
+        rs = [r for r in self.state.recordings.values()
+              if r.get("repo") == str(course.repo) and r.get("seminar_dir") == seminar_dir
+              and r.get("stage") in ("uploaded", "captioned", "done")]
+        return sorted({r.get("part", 1): r for r in rs}.values(), key=lambda r: r.get("part", 1))
+
+    def _konspekt(self, course: Course, seminar: Seminar, md: Path | None, out_dir: Path,
+                  force: bool = False) -> Path | None:
+        """Loo/uuenda konspekt.md, kui kaetud osade hulk muutus. Tagastab faili (kui see on olemas)."""
+        self._konspekt_written = set()
+        path = out_dir / konspekt_mod.FILENAME
+        if not self.cfg.describe.konspekt:
+            return path if path.exists() else None
+        pending = [r for r in self.state.recordings.values()
+                   if r.get("repo") == str(course.repo) and r.get("seminar_dir") == seminar.dir
+                   and r.get("stage") not in ("uploaded", "captioned", "done", "ignored")]
+        if pending and not force:
+            self.log("  (konspekt ootab, kuni seminari kõik osad on valmis)")
+            return path if path.exists() else None
+        recs = [r for r in self.seminar_recordings(course, seminar.dir) if r.get("result_json")]
+        nums = [r.get("part", 1) for r in recs]
+        have = konspekt_mod.existing_parts(path)
+        if not recs or (have is not None and not force and (have == [] or have == nums)):
+            return path if path.exists() else None
+        try:
+            inputs = [konspekt_mod.load_part(r.get("part", 1), Path(r["result_json"]), r.get("video_id")) for r in recs]
+            text = konspekt_mod.generate(self.cfg.describe, course.course, seminar.title, seminar.date.isoformat(),
+                                         konspekt_mod.plan_text(md), inputs, run=self.deps.konspekt, log=self.log)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"  HOIATUS: konspekti ei saanud koostada ({e})")
+            return path if path.exists() else None
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        self._konspekt_written = {path}
+        self.log(f"  ✓ konspekt: {path.relative_to(course.repo)} (osad {', '.join(map(str, nums))})")
+        return path
+
+    def make_konspekt(self, repo: Path, seminar_dir: str, force: bool = True) -> Path | None:
+        course = self.course_by_repo(str(repo.expanduser().resolve()))
+        seminar_dir = seminar_dir.strip("/")
+        recs = self.seminar_recordings(course, seminar_dir)
+        if not recs:
+            raise SystemExit(f"Seminaril {seminar_dir} pole töödeldud salvestusi.")
+        seminar = self.seminar_from_state(course, recs[0])
+        md = seminarlinks.seminar_md_path(course.repo, seminar.dir, seminar.number, course.seminar_md)
+        out_dir = course.repo / seminar.dir / course.recording_subdir
+        k = self._konspekt(course, seminar, md, out_dir, force=force)
+        changed = list(self._konspekt_written)
+        if md:
+            parts = [(r.get("part", 1), r["video_id"], (out_dir / output_names(r.get("part", 1))["md"]))
+                     for r in recs if r.get("video_id")]
+            parts = [(p, v, t if t.exists() else None) for p, v, t in parts]
+            if seminarlinks.update_file(md, parts, konspekt=k):
+                changed.append(md)
+        if changed:
+            tv = template_vars(course, seminar, 1)
+            self._commit(course, changed, f"{tv['seminar_title']}: konspekt")
+        return k
 
     def _post_discord(self, key, st, course, tv, title) -> None:
         chans = [discord_mod.Channel(**c) for c in self.cfg.discord.channels]

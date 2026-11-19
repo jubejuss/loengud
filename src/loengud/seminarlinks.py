@@ -27,7 +27,7 @@ def seminar_md_path(repo: Path, seminar_dir: str, number: int | None, pattern: s
     return None
 
 
-def render_block(parts: list[tuple[int, str, Path | None]], md_path: Path) -> str:
+def render_block(parts: list[tuple[int, str, Path | None]], md_path: Path, konspekt: Path | None = None) -> str:
     """parts: [(osa, video_id, transkriptsiooni fail või None)], osa järgi sorteeritud."""
     parts = sorted(parts)
     multi = len(parts) > 1
@@ -37,10 +37,13 @@ def render_block(parts: list[tuple[int, str, Path | None]], md_path: Path) -> st
 
     videos = " · ".join(f"[{label(p)}](https://youtu.be/{vid})" for p, vid, _ in parts)
     line = f"> 🎥 **Salvestus:** {videos}"
+    def rel(t: Path) -> str:
+        return Path(os.path.relpath(t, md_path.parent)).as_posix()
+
+    if konspekt is not None:
+        line = f"> 📘 **[Konspekt: mida seminaris räägiti]({rel(konspekt)})**  \n" + line
     tr = [(p, t) for p, _, t in parts if t is not None]
     if tr:
-        def rel(t: Path) -> str:
-            return Path(os.path.relpath(t, md_path.parent)).as_posix()
         links = " · ".join(f"[{p}. osa]({rel(t)})" if multi else f"[transkriptsioon]({rel(t)})" for p, t in tr)
         line += f"  \n> 📝 **Tekst:** {links}" if multi else f" · {links}"
     return f"{START}\n{line}\n{END}\n"
@@ -70,10 +73,10 @@ def upsert_block(text: str, block: str) -> str:
     return f"{head}{block}\n{rest}"
 
 
-def update_file(md_path: Path, parts: list[tuple[int, str, Path | None]]) -> bool:
+def update_file(md_path: Path, parts: list[tuple[int, str, Path | None]], konspekt: Path | None = None) -> bool:
     """Tagastab True, kui faili muudeti."""
     old = md_path.read_text(encoding="utf-8")
-    new = upsert_block(old, render_block(parts, md_path))
+    new = upsert_block(old, render_block(parts, md_path, konspekt))
     if new == old:
         return False
     md_path.write_text(new, encoding="utf-8")
