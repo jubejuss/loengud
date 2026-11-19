@@ -215,7 +215,7 @@ class Pipeline:
         if stage_idx(st["stage"]) < stage_idx("uploaded"):
             if st.get("existing_video_id"):
                 vid = st["existing_video_id"]
-                self.log(f"  olemasolev video {vid} – pealkirja/kirjeldust ei muuda")
+                self.log(f"  olemasolev video {vid} – pealkirja ei muuda" + (", kirjeldus uuendatakse lõpus" if self.cfg.describe.update_attached else ""))
             elif self.cfg.youtube.upload_mode == "api":
                 self.log("  YouTube: laen video üles…")
                 vid = yt.upload_video(self.youtube(), rec.path, title, description, self.cfg.youtube, log=self.log)
