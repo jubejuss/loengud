@@ -133,6 +133,37 @@ def cmd_timetable(args) -> int:
     return 0
 
 
+def cmd_ajastus(args) -> int:
+    from . import ajastus, tunniplaan
+    from .schedule import load_courses
+    if args.action == "uninstall":
+        ajastus.uninstall()
+        return 0
+    cfg = load_config(args.config_path)
+    tt = cfg.timetable
+    if not (tt.teacher_id and tt.semester_start and tt.semester_end):
+        print("Seadista config.yaml → timetable.")
+        return 2
+    sessions = tunniplaan.load_cached(cfg.work_dir / "tunniplaan.json", tt.teacher_id, tt.semester_start,
+                                      tt.semester_end, tt.url, max_age_h=1)
+    courses, _ = load_courses(cfg.repos)
+    codes = {c for course in courses for c in course.subject_codes} or None
+    times = ajastus.run_times(sessions, cfg.timezone, codes)
+    if args.action == "show":
+        for t in times:
+            print(f"{t:%a %d.%m.%Y %H:%M}")
+        print(f"+ iga päev {ajastus.DAILY_FALLBACK[0]}:{ajastus.DAILY_FALLBACK[1]:02d}; "
+              f"tunniplaani värskendus iga päev {ajastus.REFRESH_AT[0]:02d}:{ajastus.REFRESH_AT[1]:02d}")
+        if codes:
+            print(f"(ainult ained: {', '.join(sorted(codes))})")
+        return 0
+    if sys.platform != "darwin":
+        print("launchd on ainult macOS-is.")
+        return 2
+    ajastus.install(times)
+    return 0
+
+
 def cmd_ignore(args) -> int:
     _pipeline(args).ignore(_existing(args.recording))
     print("Ignoreeritud.")
@@ -244,6 +275,10 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(fn=cmd_attach)
 
     sub.add_parser("tunniplaan", help="näita õppejõu tunniplaani ja seminaride numbreid").set_defaults(fn=cmd_timetable)
+
+    s = sub.add_parser("ajastus", help="launchd ajastus tunniplaani järgi (install | show | uninstall)")
+    s.add_argument("action", choices=["install", "show", "uninstall"])
+    s.set_defaults(fn=cmd_ajastus)
 
     s = sub.add_parser("ignore", help="jäta salvestus vahele")
     s.add_argument("recording")

@@ -148,8 +148,10 @@ Juba YouTube'i laaditud video sidumine (ei laadi uuesti üles, lisab subtiitrid 
 loengud doctor          # kontrollib kõiki eeldusi
 loengud scan            # kuivkäivitus: mis leiti ja kuhu see sobitub
 loengud run             # päris käivitus
-./install.sh --launchd  # käivitus iga 2 h taustal, logi: ~/Library/Logs/loengud.log
+./install.sh --launchd  # ajastus tunniplaani järgi (vt allpool), logi: ~/Library/Logs/loengud.log
 ```
+
+**Ajastus tunniplaani järgi** (`loengud ajastus install | show | uninstall`): töövoog käivitub pärast iga seadistatud aine tundi +30, +75 ja +150 min (OneDrive jõuab sünkida; kui fail pole valmis, proovitakse uuesti) ning varuks iga päev 21:00. Iga hommik 07:10 loetakse tunniplaan uuesti ja ajastus uuendatakse, kui see muutus. Kui Mac magas, käivitab launchd vahelejäänu ärkamisel.
 
 macOS võib taustaprotsessil keelata ligipääsu kaustale `~/Library/CloudStorage`. Kui logis on `Operation not permitted`, lisa *System Settings → Privacy & Security → Full Disk Access* alla venv-i Python (`~/.local/share/loengud/venv/bin/python3` → selle sihtfail).
 

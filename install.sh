@@ -18,11 +18,12 @@ echo "✓ loengud → $BIN_DIR/loengud"
 [ -f "$HOME/.config/loengud/config.yaml" ] || "$BIN_DIR/loengud" init
 
 if [ "${1:-}" = "--launchd" ]; then
-  PLIST="$HOME/Library/LaunchAgents/ee.vileandkell.loengud.plist"
-  sed -e "s#__HOME__#$HOME#g" -e "s#__BIN__#$BIN_DIR/loengud#g" launchd/ee.vileandkell.loengud.plist > "$PLIST"
-  launchctl bootout "gui/$(id -u)" "$PLIST" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$PLIST"
-  echo "✓ launchd ajastus aktiivne (iga 2 h). Logi: ~/Library/Logs/loengud.log"
+  # vana staatiline 2-tunnine ajastus maha, kui olemas
+  OLD="$HOME/Library/LaunchAgents/ee.vileandkell.loengud.plist"
+  launchctl bootout "gui/$(id -u)/ee.vileandkell.loengud" 2>/dev/null || true
+  rm -f "$OLD"
+  "$BIN_DIR/loengud" ajastus install
+  echo "✓ Ajastus tunniplaani järgi. Vaata: loengud ajastus show · logi: ~/Library/Logs/loengud.log"
 else
   echo "Ajastuse lisamiseks: ./install.sh --launchd"
 fi
