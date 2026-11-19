@@ -353,4 +353,9 @@ class Pipeline:
     def retry(self, recording: Path, from_stage: str) -> None:
         if from_stage not in STAGES:
             raise ValueError(f"Tundmatu etapp; võimalikud: {', '.join(STAGES)}")
-        self.state.upsert(str(recording), stage=from_stage, problem=None, problem_kind=None)
+        if not self.state.get(str(recording)):
+            raise KeyError(f"Salvestust pole olekus: {recording} (käivita enne `loengud scan`)")
+        extra = {}
+        if stage_idx(from_stage) < stage_idx("committed"):
+            extra = dict(description=None, description_pushed=False, description_failed=None)
+        self.state.upsert(str(recording), stage=from_stage, problem=None, problem_kind=None, **extra)

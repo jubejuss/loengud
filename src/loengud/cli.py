@@ -65,8 +65,17 @@ def _pipeline(args):
     return Pipeline(load_config(args.config_path))
 
 
+def _existing(path_str: str) -> Path:
+    p = Path(path_str).expanduser()
+    if not p.exists():
+        raise FileNotFoundError(f"Faili ei leitud: {p}\n(Kas muutuja, nt $R, on selles terminalis defineeritud?)")
+    return p
+
+
 def cmd_run(args) -> int:
     cfg = load_config(args.config_path)
+    if args.only:
+        _existing(args.only)
     with run_lock(cfg.work_dir / "loengud.lock") as ok:
         if not ok:
             print("Teine käivitus juba töötab – lõpetan.")
@@ -100,13 +109,13 @@ def cmd_status(args) -> int:
 
 def cmd_assign(args) -> int:
     p = _pipeline(args)
-    p.assign(Path(args.recording).expanduser(), Path(args.repo).expanduser(), args.seminar, args.part)
+    p.assign(_existing(args.recording), Path(args.repo).expanduser(), args.seminar, args.part)
     print("Määratud. Käivita `loengud run`.")
     return 0
 
 
 def cmd_attach(args) -> int:
-    _pipeline(args).attach_video(Path(args.recording).expanduser(), args.video)
+    _pipeline(args).attach_video(_existing(args.recording), args.video)
     print("Seotud. `loengud run --only …` lisab sellele videole subtiitrid ja esitusloendid.")
     return 0
 
@@ -125,13 +134,13 @@ def cmd_timetable(args) -> int:
 
 
 def cmd_ignore(args) -> int:
-    _pipeline(args).ignore(Path(args.recording).expanduser())
+    _pipeline(args).ignore(_existing(args.recording))
     print("Ignoreeritud.")
     return 0
 
 
 def cmd_retry(args) -> int:
-    _pipeline(args).retry(Path(args.recording).expanduser(), args.from_stage)
+    _pipeline(args).retry(_existing(args.recording), args.from_stage)
     print(f"Etapp seatud: {args.from_stage}. Käivita `loengud run`.")
     return 0
 
