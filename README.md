@@ -81,7 +81,7 @@ match_title: "RIF25"          # valikuline: Teamsi koosoleku pealkirja alamstrin
 default_time: "10:00-13:15"   # valikuline: eristab sama päeva seminare
 recording_subdir: salvestus
 youtube:
-  playlist_id: "PL…"          # sama playlist, mida Discordi Apps Script jälgib
+  playlist_id: "PL…"          # kursuse esitusloend (vt docs/esitusloendid.md)
   title_template: "{course} – {seminar_title} ({date_et})"
 seminars:
   - date: 2026-11-19
@@ -92,6 +92,8 @@ seminars:
     title: "Seminar 5: Flexbox"
     time: "14:00-17:15"
 ```
+
+Iga video läheb kursuse esitusloendisse **ja** kõigisse `config.yaml` → `youtube.common_playlist_ids` loenditesse (vaikimisi *Haapsalu kolledž*). Kanali ja esitusloendite ID-d: [docs/esitusloendid.md](docs/esitusloendid.md).
 
 Tulemus repos:
 

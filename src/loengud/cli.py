@@ -19,7 +19,8 @@ course: "Veebiarendus (RIF25)"
 # default_time: "10:00-13:15"
 recording_subdir: salvestus      # seminari kausta all: salvestus/transkriptsioon.md jms
 youtube:
-  playlist_id: "PLxxxxxxxxxxxxxxxx"
+  playlist_id: "PLxxxxxxxxxxxxxxxx"   # kursuse esitusloend, vt docs/esitusloendid.md
+  # extra_playlist_ids: []            # lisaks ühisele (config.yaml common_playlist_ids)
   title_template: "{course} – {seminar_title} ({date_et})"
   # description_template: |
   #   {course} · {seminar_title}

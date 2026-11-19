@@ -25,6 +25,8 @@ class FakeYouTube:
         self.uploads: list[dict] = []  # {"id","title"}
         self.captions_by_video: dict[str, list] = {}
         self.playlist: set[str] = set()
+        self.playlist_inserts: list[tuple[str, str]] = []
+        self._pl: set[tuple[str, str]] = set()
         self.updated: list[dict] = []
         self.inserted_videos = 0
 
@@ -45,10 +47,14 @@ class FakeYouTube:
                     return _Req(lambda: {"items": [{"snippet": {"title": v["title"], "resourceId": {"videoId": v["id"]}}}
                                                    for v in yt.uploads]})
                 vid = kw.get("videoId")
-                return _Req(lambda: {"items": [{"id": "x"}] if vid in yt.playlist else []})
+                return _Req(lambda: {"items": [{"id": "x"}] if (playlistId, vid) in yt._pl else []})
 
             def insert(self, part, body):
-                return _Req(lambda: yt.playlist.add(body["snippet"]["resourceId"]["videoId"]) or {})
+                def do():
+                    pid, vid = body["snippet"]["playlistId"], body["snippet"]["resourceId"]["videoId"]
+                    yt._pl.add((pid, vid)); yt.playlist.add(vid); yt.playlist_inserts.append((pid, vid))
+                    return {}
+                return _Req(do)
         return P()
 
     def videos(self):
@@ -100,6 +106,7 @@ repos: ["{repo}"]
 youtube:
   upload_mode: {mode}
   staging_dir: "{tmp_path / 'staging'}"
+  common_playlist_ids: ["PLcommon", "PLtest"]
   client_secrets: "{tmp_path / 'cs.json'}"
   token: "{tmp_path / 'tok.json'}"
 git:
@@ -166,6 +173,7 @@ def test_full_flow(tmp_path, lecture_repo, mode):
     assert st["video_id"] == vid
     assert fake.captions_by_video[vid][0]["snippet"]["language"] == "et"
     assert vid in fake.playlist
+    assert fake.playlist_inserts == [("PLtest", vid), ("PLcommon", vid)]  # kursus + ühine, ilma duplikaadita
     md = (out / "transkriptsioon.md").read_text()
     assert f"https://youtu.be/{vid}?t=" in md
     assert "videolink" in remote_log(lecture_repo)

@@ -188,11 +188,12 @@ class Pipeline:
 
         # 6) esitusloend
         if stage_idx(st["stage"]) < stage_idx("done"):
-            if course.playlist_id:
-                added = yt.ensure_in_playlist(self.youtube(), course.playlist_id, st["video_id"])
-                self.log("  ✓ esitusloendisse lisatud" if added else "  ✓ juba esitusloendis")
-            else:
-                self.log("  (esitusloendit pole .loengud.yaml-is määratud)")
+            pids = course.all_playlist_ids(self.cfg.youtube.common_playlist_ids)
+            if not pids:
+                self.log("  (esitusloendit pole .loengud.yaml-is ega config.yaml-is määratud)")
+            for pid in pids:
+                added = yt.ensure_in_playlist(self.youtube(), pid, st["video_id"])
+                self.log(f"  ✓ esitusloend {pid}: " + ("lisatud" if added else "juba olemas"))
             self.state.upsert(key, stage="done", problem=None, problem_kind=None)
 
     # --- alamsammud ---------------------------------------------------------------

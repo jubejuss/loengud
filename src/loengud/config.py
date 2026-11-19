@@ -51,6 +51,8 @@ class YoutubeConfig:
     caption_language: str = "et"
     caption_name: str = "Eesti (automaatne, TalTech ASR)"
     staging_dir: Path = Path("~/Movies/Loengud-üleslaadimiseks").expanduser()
+    # Esitusloendid, kuhu läheb IGA loeng (lisaks kursuse omale), nt Haapsalu kolledž
+    common_playlist_ids: list[str] = field(default_factory=list)
     # Kui kaua oodatakse Studio-üleslaadimist enne hoiatust (päevades)
     studio_wait_warn_days: int = 3
 
@@ -157,6 +159,9 @@ youtube:
   caption_language: et
   caption_name: "Eesti (automaatne, TalTech ASR)"
   staging_dir: "~/Movies/Loengud-üleslaadimiseks"
+  # Iga loeng lisatakse ka nendesse esitusloenditesse (lisaks kursuse omale):
+  common_playlist_ids:
+    - "PL2lxpfi7Jl2uqRbh4Ew7v0jdKjteolb4_"   # Haapsalu kolledž
 
 git:
   push: true

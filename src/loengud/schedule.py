@@ -42,6 +42,12 @@ class Course:
     branch: str | None = None
     repo_url: str | None = None
     extra: dict = field(default_factory=dict)
+    extra_playlist_ids: list[str] = field(default_factory=list)
+
+    def all_playlist_ids(self, common: list[str] | None = None) -> list[str]:
+        """Kursuse esitusloend + lisaloendid + ühised (nt Haapsalu kolledž), duplikaatideta."""
+        ids = ([self.playlist_id] if self.playlist_id else []) + self.extra_playlist_ids + list(common or [])
+        return list(dict.fromkeys(i for i in ids if i))
 
 
 @dataclass
@@ -86,6 +92,7 @@ def load_course(repo: Path) -> Course:
         repo=repo,
         course=raw.get("course") or repo.name,
         playlist_id=yt.get("playlist_id"),
+        extra_playlist_ids=[str(p) for p in (yt.get("extra_playlist_ids") or [])],
         seminars=seminars,
         title_template=yt.get("title_template", DEFAULT_TITLE_TEMPLATE),
         description_template=yt.get("description_template", DEFAULT_DESCRIPTION_TEMPLATE),
