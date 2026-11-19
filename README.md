@@ -133,7 +133,7 @@ Studio-režiimis: kui `status` näitab „lae Studiosse üles: …mp4“, lohist
 
 ## Privaatsus
 
-Vt [PRIVACY.md](PRIVACY.md).
+Vt [PRIVACY.md](PRIVACY.md) ja [TERMS.md](TERMS.md). Tööriist kasutab YouTube API teenuseid ([YouTube Terms of Service](https://www.youtube.com/t/terms)).
 
 ## Arendus
 
