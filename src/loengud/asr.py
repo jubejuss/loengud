@@ -52,7 +52,7 @@ def build_command(cfg: AsrConfig, wav: Path, out_dir: Path, extra_config: Path |
         target = str(local / "transcribe.nf")
     else:
         target = pipeline  # GitHubi nimi, nt "taltechnlp/est-asr-pipeline"
-    cmd = [cfg.nextflow_bin, "run", target]
+    cmd = [cfg.nextflow_bin, "run", target, "-resume"]  # katkestamisel jätkab valmis sammudest
     if extra_config:
         cmd += ["-c", str(extra_config)]
     if cfg.profile:
