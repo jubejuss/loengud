@@ -48,7 +48,7 @@ git clone https://github.com/taltechnlp/est-asr-pipeline ~/tools/est-asr-pipelin
 docker pull --platform linux/amd64 alumae/est-asr-pipeline:0.1.4
 ```
 
-**Apple Silicon (M1 MacBook):** Dockeri pilt on ainult x86_64, seega jookseb see emulatsioonis ja on aeglane. Lisa seadistusse `asr.docker_run_options: "--platform linux/amd64 --memory=10g"`. **Inteli iMac** käitab pilti natiivselt ja on ASR-i jaoks parem valik. Mõõda esimese loengu peal, kui kaua see võtab: `~/Library/Caches/loengud/<id>/asr.log`.
+**Apple Silicon (M1 MacBook):** Dockeri pilt on ainult x86_64, seega jookseb see emulatsioonis ja on aeglane. Lisa seadistusse `asr.docker_run_options: "--platform linux/amd64 --memory=10g"`. **Inteli iMac** käitab pilti natiivselt ja on ASR-i jaoks parem valik. Mõõda esimese loengu peal, kui kaua see võtab: `~/loengud-work/<id>/asr.log`.
 
 ### 2. Tööriist
 

@@ -114,7 +114,7 @@ def load_config(path: Path | None = None) -> Config:
     if yt.upload_mode not in ("studio", "api"):
         raise ValueError("youtube.upload_mode peab olema 'studio' või 'api'")
 
-    work_dir = _p(raw.get("work_dir", "~/Library/Caches/loengud"))
+    work_dir = _p(raw.get("work_dir", "~/loengud-work"))
     tt = dict(raw.get("timetable") or {})
     for k in ("semester_start", "semester_end"):
         if isinstance(tt.get(k), str):
@@ -190,6 +190,6 @@ git:
   pull_before: true
   commit_template: "{seminar_title}: salvestuse transkriptsioon ({date})"
 
-work_dir: "~/Library/Caches/loengud"
+work_dir: "~/loengud-work"
 state_file: "~/.config/loengud/state.json"
 """

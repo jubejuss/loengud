@@ -93,7 +93,7 @@ class Pipeline:
     def transcribe(self, video: Path, job_dir: Path) -> Path:
         if self.deps.transcribe:
             return self.deps.transcribe(video, job_dir)
-        wav = asr_mod.extract_audio(video, job_dir / "audio.wav")
+        wav = asr_mod.extract_audio(video, job_dir / "lecture_16k.wav")  # mitte audio.wav: pipeline to_wav kirjutab sellenimelise väljundi
         result = asr_mod.transcribe(self.cfg.asr, wav, job_dir, log=self.log)
         wav.unlink(missing_ok=True)
         return result
