@@ -343,7 +343,10 @@ class Pipeline:
         return path
 
     def make_konspekt(self, repo: Path, seminar_dir: str, force: bool = True) -> Path | None:
-        course = self.course_by_repo(str(repo.expanduser().resolve()))
+        want = repo.expanduser().resolve()
+        course = next((c for c in self.courses if c.repo.expanduser().resolve() == want), None)
+        if course is None:
+            raise SystemExit(f"Repo {repo} pole config.yaml-is (repos).")
         seminar_dir = seminar_dir.strip("/")
         recs = self.seminar_recordings(course, seminar_dir)
         if not recs:
