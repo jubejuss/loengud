@@ -120,6 +120,44 @@ def cmd_attach(args) -> int:
     return 0
 
 
+def cmd_backfill(args) -> int:
+    from datetime import date
+    cfg = load_config(args.config_path)
+    since = date.fromisoformat(args.since) if args.since else cfg.timetable.semester_start
+    until = date.fromisoformat(args.until) if args.until else (cfg.source.ignore_before or date.today())
+    if not since:
+        print("Anna --since (või timetable.semester_start config.yaml-is).")
+        return 2
+    with run_lock(cfg.work_dir / "loengud.lock") as ok:
+        if not ok:
+            print("Teine käivitus juba töötab – proovi hiljem.")
+            return 1
+        from .pipeline import Pipeline
+        rows = Pipeline(cfg).backfill(since, until, apply=args.apply)
+    print(f"Salvestused {since} … {until - __import__('datetime').timedelta(days=1)}: {len(rows)}\n")
+    ok_n = 0
+    for r in rows:
+        rec = r["rec"]
+        head = f"{rec.start:%d.%m %H:%M}  {rec.path.name[:60]}"
+        if r["video"]:
+            ok_n += 1
+            print(f"✓ {head}\n    → {r['course'].course}: {r['seminar'].dir} osa {r['part']}\n"
+                  f"    → video {r['video']['id']} „{r['video']['title'][:70]}“")
+        else:
+            where = f"{r['course'].course}: {r['seminar'].dir} osa {r['part']} – " if r.get("course") else ""
+            print(f"✗ {head}\n    {where}{r['note'] or 'videot ei leitud'}")
+            for v in r.get("candidates", [])[:5]:
+                print(f"      kandidaat {v['id']} „{v['title'][:60]}“ ({v['published'][:10]})")
+    print()
+    if args.apply:
+        print(f"Märgitud tagantjärele töötluseks: {ok_n}. Käivita nüüd `loengud run` "
+              "(võtab ~5–10 min salvestuse kohta). Discordi neist ei postitata.")
+    else:
+        print(f"Sobitatud {ok_n}/{len(rows)}. See oli eelvaade – kui paarid on õiged, käivita "
+              "`loengud backfill --apply`. Valesid/puuduvaid saad hiljem siduda `loengud attach`-iga.")
+    return 0
+
+
 def cmd_konspekt(args) -> int:
     k = _pipeline(args).make_konspekt(Path(args.repo), args.seminar, force=not args.if_missing)
     print(f"Konspekt: {k}" if k else "Konspekti ei loodud (vt hoiatust ülal).")
@@ -307,6 +345,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("recording")
     s.add_argument("--video", required=True, help="video ID või URL")
     s.set_defaults(fn=cmd_attach)
+
+    s = sub.add_parser("backfill", help="varasemad salvestused uuesti: sobita olemasolevate YouTube'i videotega")
+    s.add_argument("--since", help="alates (AAAA-KK-PP); vaikimisi semestri algus")
+    s.add_argument("--until", help="kuni (välja arvatud); vaikimisi source.ignore_before")
+    s.add_argument("--apply", action="store_true", help="märgi sobitatud paarid töötluseks")
+    s.set_defaults(fn=cmd_backfill)
 
     s = sub.add_parser("konspekt", help="koosta (uuesti) seminari konspekt kõigi osade transkriptsioonidest")
     s.add_argument("repo", help="kursuse repo kaust")

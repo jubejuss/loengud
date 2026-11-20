@@ -202,13 +202,18 @@ def course_by_title(courses: list[Course], meeting_title: str) -> list[Course]:
     return [c for c in courses if any(_norm(x) in t for x in c.match_titles)]
 
 
+def _heading_file(f: Path) -> str | None:
+    for line in f.read_text(encoding="utf-8", errors="replace").splitlines()[:30]:
+        if line.startswith("# "):
+            return line[2:].strip()
+    return None
+
+
 def _heading(path: Path) -> str | None:
     for name in ("seminar.md", "README.md", "readme.md"):
         f = path / name
         if f.exists():
-            for line in f.read_text(encoding="utf-8", errors="replace").splitlines()[:30]:
-                if line.startswith("# "):
-                    return line[2:].strip()
+            return _heading_file(f)
     return None
 
 
@@ -226,6 +231,8 @@ def seminar_for_number(course: Course, n: int, day: date) -> Seminar:
                     rel = str(d.relative_to(course.repo))
                     break
     head = _heading(course.repo / rel)
+    if course.seminar_md and (course.repo / course.seminar_md.format(n=n)).exists():
+        head = _heading_file(course.repo / course.seminar_md.format(n=n)) or head
     title = f"Seminar {n}" + (f": {head}" if head and not head.lower().startswith("seminar") else "")
     if head and head.lower().startswith("seminar"):
         title = head

@@ -56,7 +56,10 @@ def ffprobe_creation_time(path: Path) -> datetime | None:
     return None
 
 
-def discover(cfg: Config, now: float | None = None) -> list[Recording]:
+def discover(cfg: Config, now: float | None = None, include: frozenset[str] = frozenset(),
+             since=None) -> list[Recording]:
+    """`include`: failid, mis võetakse ka `ignore_before`-ist vanemana (tagantjärele töötlus).
+    `since`: asendab `ignore_before`-i (nt `loengud backfill`)."""
     now = now or time.time()
     tz = ZoneInfo(cfg.timezone)
     found: list[Recording] = []
@@ -81,7 +84,8 @@ def discover(cfg: Config, now: float | None = None) -> list[Recording]:
                     start, src = ct.astimezone(tz), "ffprobe"
                 else:
                     start, src = datetime.fromtimestamp(st.st_mtime, tz), "mtime"
-            if cfg.source.ignore_before and start.date() < cfg.source.ignore_before:
+            limit = since if since is not None else cfg.source.ignore_before
+            if limit and start.date() < limit and str(p) not in include:
                 continue
             found.append(Recording(p, st.st_size, st.st_mtime, title, start, src))
     return found

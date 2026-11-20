@@ -29,6 +29,8 @@ class FakeYouTube:
         self._pl: set[tuple[str, str]] = set()
         self.updated: list[dict] = []
         self.inserted_videos = 0
+        self.playlist_content: dict[str, list[dict]] = {}
+        self.deleted_captions: list[str] = []
 
     # channels().list(...)
     def channels(self):
@@ -47,6 +49,10 @@ class FakeYouTube:
                     return _Req(lambda: {"items": [{"snippet": {"title": v["title"], "resourceId": {"videoId": v["id"]}}}
                                                    for v in yt.uploads]})
                 vid = kw.get("videoId")
+                if vid is None and playlistId in yt.playlist_content:
+                    return _Req(lambda: {"items": [{"snippet": {"title": v["title"], "publishedAt": v["published"]},
+                                                    "contentDetails": {"videoId": v["id"], "videoPublishedAt": v["published"]}}
+                                                   for v in yt.playlist_content[playlistId]]})
                 return _Req(lambda: {"items": [{"id": "x"}] if (playlistId, vid) in yt._pl else []})
 
             def insert(self, part, body):
@@ -91,6 +97,14 @@ class FakeYouTube:
 
             def update(self, part, body, media_body):
                 return _Req(lambda: {"id": body["id"]})
+
+            def delete(self, id):
+                def do():
+                    yt.deleted_captions.append(id)
+                    for lst in yt.captions_by_video.values():
+                        lst[:] = [c for c in lst if c["id"] != id]
+                    return {}
+                return _Req(do)
         return Cap()
 
 
@@ -265,3 +279,35 @@ def test_assign_resolves_unmatched(tmp_path, lecture_repo):
     p.assign(rec, lecture_repo, "seminarid/05-flexbox")
     assert p.run() == 0
     assert (lecture_repo / "seminarid/05-flexbox/salvestus/transkriptsioon.md").exists()
+
+
+def test_backfill_attaches_existing_videos(tmp_path, lecture_repo):
+    rec_dir = tmp_path / "rec"
+    make_recording(rec_dir, "RIF25-20261119_081530-Meeting Recording.mp4")
+    make_recording(rec_dir, "RIF25-20261119_100500-Meeting Recording.mp4")
+    cfg = write_config(tmp_path, lecture_repo, rec_dir, "studio")
+    cfg.source.ignore_before = __import__("datetime").date(2026, 11, 20)
+    fake = FakeYouTube()
+    fake.playlist_content["PLtest"] = [
+        {"id": "old2", "title": "Veebiarendus 19.11 osa 2", "published": "2026-11-19T15:00:00Z"},
+        {"id": "old1", "title": "Veebiarendus 19.11 osa 1", "published": "2026-11-19T14:00:00Z"},
+        {"id": "other", "title": "Veebiarendus 12.11", "published": "2026-11-12T14:00:00Z"},
+    ]
+    fake.captions_by_video["old1"] = [{"id": "oldcap", "snippet": {"language": "et", "name": "tekstiks.ee"}},
+                                      {"id": "auto", "snippet": {"language": "et", "name": "", "trackKind": "asr"}}]
+    POSTS.clear()
+    p = Pipeline(cfg, Deps(transcribe=fake_asr, describe=fake_describe, konspekt=fake_konspekt,
+                           discord_post=fake_post, youtube_service=lambda: fake, log=lambda m: None))
+    assert p.run() == 0 and not p.state.recordings  # ignore_before: tavaline käivitus ei näe neid
+    rows = p.backfill(__import__("datetime").date(2026, 11, 1), cfg.source.ignore_before)
+    assert [(r["part"], r["video"]["id"]) for r in rows] == [(1, "old1"), (2, "old2")]
+    assert not p.state.recordings  # eelvaade ei muuda olekut
+    p.backfill(__import__("datetime").date(2026, 11, 1), cfg.source.ignore_before, apply=True)
+    assert p.run() == 0
+    st = sorted(p.state.recordings.values(), key=lambda r: r["part"])
+    assert [r["stage"] for r in st] == ["done", "done"] and [r["video_id"] for r in st] == ["old1", "old2"]
+    assert fake.inserted_videos == 0 and fake.deleted_captions == ["oldcap"]
+    assert not POSTS  # tagantjärele töötlust ei postitata Discordi
+    assert {u["id"] for u in fake.updated} == {"old1", "old2"}  # kirjeldus + peatükid
+    out = lecture_repo / "seminarid/04-css-grid/salvestus"
+    assert (out / "konspekt.md").exists() and (out / "transkriptsioon-2.md").exists()

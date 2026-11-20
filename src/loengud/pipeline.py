@@ -4,7 +4,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import re
 import traceback
+from datetime import date as date_cls
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -110,7 +112,8 @@ class Pipeline:
     # --- põhitsükkel -------------------------------------------------------------
     def scan(self) -> list[tuple[Recording, dict]]:
         out = []
-        for rec in discover(self.cfg):
+        include = frozenset(k for k, r in self.state.recordings.items() if r.get("backfill"))
+        for rec in discover(self.cfg, include=include):
             st = self.state.get(rec.key) or {}
             if st.get("size") not in (None, rec.size) and stage_idx(st.get("stage")) < stage_idx("committed"):
                 st = {}  # fail muutus enne töötlemist – alusta otsast
@@ -243,6 +246,13 @@ class Pipeline:
             cid = yt.upsert_captions(self.youtube(), st["video_id"], out_dir / names["srt"], self.cfg.youtube)
             st = self.state.upsert(key, stage="captioned", caption_id=cid)
             self.log("  ✓ subtiitrid lisatud")
+            if st.get("replace_captions"):
+                try:
+                    n = yt.delete_other_captions(self.youtube(), st["video_id"], self.cfg.youtube)
+                    if n:
+                        self.log(f"  ✓ vanad subtiitrid eemaldatud ({n})")
+                except Exception as e:  # noqa: BLE001
+                    self.log(f"  HOIATUS: vanu subtiitreid ei saanud eemaldada ({e})")
 
         # 6) esitusloend
         if stage_idx(st["stage"]) < stage_idx("done"):
@@ -457,6 +467,71 @@ class Pipeline:
         return vid
 
     # --- käsitsi sekkumine ---------------------------------------------------------
+    # --- tagantjärele töötlus -----------------------------------------------------
+    def backfill(self, since, until, apply: bool = False) -> list[dict]:
+        """Varasemad salvestused (since <= kuupäev < until): sobita seminari ja olemasoleva YouTube'i
+        videoga. `apply` märgib leitud paarid olekusse; `loengud run` teeb ülejäänu."""
+        recs = [r for r in discover(self.cfg, since=since) if r.start.date() < until]
+        recs.sort(key=lambda r: r.start)
+        sessions = self.sessions()
+        rows, parts_seen, cache = [], {}, {}
+        for rec in recs:
+            st = self.state.get(rec.key) or {}
+            row = {"rec": rec, "course": None, "seminar": None, "part": None, "video": None, "note": ""}
+            rows.append(row)
+            if st.get("stage") in ("done", "ignored") and not st.get("backfill"):
+                row["note"] = f"juba olekus ({st.get('stage')})"
+                continue
+            try:
+                m = match_smart(self.courses, rec.start, rec.meeting_title, sessions, self.cfg.timezone)
+            except MatchError as e:
+                row["note"] = f"ei sobitunud: {e}"
+                continue
+            row.update(course=m.course, seminar=m.seminar, match=m)
+            k = (str(m.course.repo), m.seminar.dir)
+            parts_seen[k] = parts_seen.get(k, 0) + 1
+            row["part"] = parts_seen[k]
+        # videod kursuse esitusloenditest
+        used = {r.get("video_id") or r.get("existing_video_id") for r in self.state.recordings.values()}
+        groups: dict = {}
+        for row in rows:
+            if row["course"] is not None and not row["note"]:
+                groups.setdefault((str(row["course"].repo), row["seminar"].dir), []).append(row)
+        for (repo, _), grp in groups.items():
+            course = grp[0]["course"]
+            if repo not in cache:
+                vids = []
+                for pid in [course.playlist_id, *course.extra_playlist_ids]:
+                    if pid:
+                        vids += yt.playlist_videos(self.youtube(), pid)
+                cache[repo] = {v["id"]: v for v in vids}
+            pool = [v for v in cache[repo].values() if v["id"] not in used]
+            day = grp[0]["rec"].start.date()
+            cands = [v for v in pool if _date_in_title(v["title"], day)]
+            if not cands:
+                cands = [v for v in pool if v["published"][:10] and
+                         0 <= (date_cls.fromisoformat(v["published"][:10]) - day).days <= 10]
+            cands.sort(key=lambda v: (_part_in_title(v["title"]), v["published"]))
+            if len(cands) >= len(grp) and (len(cands) == len(grp) or any(_date_in_title(v["title"], day) for v in cands)):
+                for row, v in zip(grp, cands):
+                    row["video"] = v
+                    used.add(v["id"])
+            else:
+                for row in grp:
+                    row["note"] = f"video ebaselge ({len(cands)} kandidaati {len(grp)} salvestusele)"
+                    row["candidates"] = cands
+        if apply:
+            for row in rows:
+                if row["video"] is None:
+                    continue
+                rec = row["rec"]
+                self.state.upsert(rec.key, size=rec.size, meeting_title=rec.meeting_title,
+                                  start=rec.start.isoformat(), start_source=rec.start_source,
+                                  stage="discovered", backfill=True, replace_captions=True,
+                                  existing_video_id=row["video"]["id"],
+                                  discord_posted=["(tagantjärele töötlus – ei postita)"], problem=None)
+        return rows
+
     def attach_video(self, recording: Path, video_id: str) -> None:
         """Seo salvestus juba YouTube'is oleva videoga (ei laadi üles, ei muuda pealkirja)."""
         self.scan()
@@ -507,3 +582,15 @@ class Pipeline:
         if stage_idx(from_stage) < stage_idx("committed"):
             extra = dict(description=None, description_pushed=False, description_failed=None)
         self.state.upsert(str(recording), stage=from_stage, problem=None, problem_kind=None, **extra)
+
+
+def _date_in_title(title: str, day) -> bool:
+    t = title.casefold()
+    pats = [f"{day.day}.{day.month}.", f"{day.day:02d}.{day.month:02d}", day.isoformat(),
+            f"{day.year}{day.month:02d}{day.day:02d}", f"{day.day}.{day.month:02d}", f"{day.day:02d}.{day.month}."]
+    return any(re.search(r"(?<!\d)" + re.escape(p), t) for p in pats)
+
+
+def _part_in_title(title: str) -> int:
+    m = re.search(r"(?:osa|part|\bo)\s*(\d)|(\d)\.\s*osa|-(\d)\s*$|\((\d)\)", title.casefold())
+    return int(next(g for g in m.groups() if g)) if m else 0

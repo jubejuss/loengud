@@ -167,3 +167,33 @@ def update_description(service, video_id: str, description: str) -> None:
         "defaultLanguage": snip.get("defaultLanguage", "et"),
     }}
     service.videos().update(part="snippet", body=body).execute()
+
+
+def playlist_videos(service, playlist_id: str, max_pages: int = 10) -> list[dict]:
+    """Esitusloendi videod: [{id, title, published}] (published = video avaldamise ISO-aeg)."""
+    out, token = [], None
+    for _ in range(max_pages):
+        resp = service.playlistItems().list(part="snippet,contentDetails", playlistId=playlist_id,
+                                            maxResults=50, pageToken=token).execute()
+        for it in resp.get("items", []):
+            sn, cd = it.get("snippet", {}), it.get("contentDetails", {})
+            vid = cd.get("videoId") or sn.get("resourceId", {}).get("videoId")
+            if vid:
+                out.append({"id": vid, "title": sn.get("title", ""),
+                            "published": cd.get("videoPublishedAt") or sn.get("publishedAt") or ""})
+        token = resp.get("nextPageToken")
+        if not token:
+            break
+    return out
+
+
+def delete_other_captions(service, video_id: str, cfg: YoutubeConfig) -> int:
+    """Kustuta sama keele varasemad (mitte meie, mitte YouTube'i automaatsed) subtiitrid."""
+    n = 0
+    for c in service.captions().list(part="snippet", videoId=video_id).execute().get("items", []):
+        s = c["snippet"]
+        if (s.get("language", "").split("-")[0] == cfg.caption_language.split("-")[0]
+                and s.get("name") != cfg.caption_name and s.get("trackKind", "standard").lower() != "asr"):
+            service.captions().delete(id=c["id"]).execute()
+            n += 1
+    return n
