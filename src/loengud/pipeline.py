@@ -4,6 +4,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import json
 import re
 import traceback
 from datetime import date as date_cls
@@ -133,6 +134,8 @@ class Pipeline:
                 continue
             if st.get("stage") == "ignored":
                 continue
+            if st.get("stage") == "done" and not st.get("local_freed") and st.get("free_attempts", 0) < 3:
+                self._free_local(rec)
             if st.get("stage") == "done":
                 desc_pending = self.cfg.describe.enabled and not (st.get("description_pushed") or st.get("description_failed"))
                 discord_pending = self.cfg.discord.enabled and st.get("discord_posted") is None
@@ -467,6 +470,27 @@ class Pipeline:
         return vid
 
     # --- käsitsi sekkumine ---------------------------------------------------------
+    def _free_local(self, rec) -> None:
+        """OneDrive'i „Free up space“: vabasta valmis salvestuse kohalik koopia (fail jääb pilve)."""
+        if not self.cfg.source.free_up_space or "/CloudStorage/" not in str(rec.path) or sys.platform != "darwin":
+            return
+        try:
+            before = rec.path.stat().st_blocks
+            if before == 0:
+                self.state.upsert(rec.key, local_freed=True)
+                return
+            js = ('ObjC.import("Foundation");'
+                  f'$.NSFileManager.defaultManager.evictUbiquitousItemAtURLError($.NSURL.fileURLWithPath({json.dumps(str(rec.path))}), null)')
+            subprocess.run(["osascript", "-l", "JavaScript", "-e", js], capture_output=True, text=True, timeout=60)
+            after = rec.path.stat().st_blocks
+            self.state.upsert(rec.key, free_attempts=(self.state.get(rec.key) or {}).get("free_attempts", 0) + 1)
+            if after < before:
+                mb = (before - after) * 512 / 1e6
+                self.state.upsert(rec.key, local_freed=True)
+                self.log(f"  ✓ kohalik koopia vabastatud: {rec.path.name} ({mb:.0f} MB, fail jääb OneDrive'i)")
+        except Exception as e:  # noqa: BLE001
+            self.log(f"  (kohalikku koopiat ei saanud vabastada: {e})")
+
     # --- tagantjärele töötlus -----------------------------------------------------
     def backfill(self, since, until, apply: bool = False) -> list[dict]:
         """Varasemad salvestused (since <= kuupäev < until): sobita seminari ja olemasoleva YouTube'i

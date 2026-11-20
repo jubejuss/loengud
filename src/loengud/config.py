@@ -26,6 +26,9 @@ class SourceConfig:
     ignore_before: date | None = None
     # Teamsi failinime ajatempli ajavöönd (nt "Koosolek-20261119_081530-Meeting Recording.mp4").
     filename_tz: str = "UTC"
+    # Pärast valmimist vabasta pilvekaustas (OneDrive) oleva salvestuse kohalik koopia
+    # („Free up space“) – fail jääb pilve ja laaditakse vajadusel uuesti alla.
+    free_up_space: bool = True
 
 
 @dataclass
