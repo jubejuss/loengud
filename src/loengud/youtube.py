@@ -57,7 +57,8 @@ def safe_filename(title: str) -> str:
 def norm_title(title: str) -> str:
     t = unicodedata.normalize("NFC", safe_filename(title)).casefold()
     t = re.sub(r"\.(mp4|mov|m4v)$", "", t)
-    return re.sub(r"[\s\-–—]+", " ", t).strip()
+    # Studio eemaldab failinimest kirjavahemärgid („(26.11.2026)“ → „26 11 2026“) → võrdle ainult tähti/numbreid
+    return re.sub(r"[\W_]+", " ", t).strip()
 
 
 # --- toimingud -----------------------------------------------------------------
