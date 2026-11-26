@@ -4,6 +4,9 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import errno
+import time
+import sys
 from pathlib import Path
 
 from .config import AsrConfig
@@ -17,12 +20,45 @@ def recording_id(path: Path, size: int) -> str:
     return hashlib.sha1(f"{path.name}:{size}".encode()).hexdigest()[:12]
 
 
+def allow_cloud_downloads() -> None:
+    """macOS: luba sellel protsessil (ja alamprotsessidel) pilvefaile (OneDrive „ainult pilves“)
+    alla laadida. launchd-i taustaprotsessides on see vaikimisi keelatud → ffmpeg saab vea
+    „Resource deadlock avoided“ (EDEADLK)."""
+    if sys.platform != "darwin":
+        return
+    try:
+        import ctypes
+        libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+        # IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES=3, IOPOL_SCOPE_PROCESS=0, IOPOL_MATERIALIZE_DATALESS_FILES_ON=2
+        libc.setiopolicy_np(3, 0, 2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def materialize(path: Path, timeout_s: int = 1800) -> None:
+    """Laadi pilvest alla „ainult pilves“ fail (lugemine käivitab allalaadimise)."""
+    allow_cloud_downloads()
+    t0 = time.time()
+    while True:
+        try:
+            with open(path, "rb") as f:
+                f.read(1)
+                f.seek(-1, 2)
+                f.read(1)
+            return
+        except OSError as e:
+            if e.errno != errno.EDEADLK or time.time() - t0 > timeout_s:
+                raise AsrError(f"salvestust ei saanud OneDrive'ist alla laadida: {e}") from e
+            time.sleep(10)
+
+
 def extract_audio(video: Path, out_wav: Path) -> Path:
     """16 kHz mono WAV ASCII-nimega – väldib Nextflow'i probleeme tühikute ja täpitähtedega."""
     out_wav.parent.mkdir(parents=True, exist_ok=True)
     if out_wav.exists() and out_wav.stat().st_size > 0:
         return out_wav
     tmp = out_wav.with_suffix(".part.wav")
+    materialize(video)
     cmd = ["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", str(video),
            "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(tmp)]
     r = subprocess.run(cmd, capture_output=True, text=True)

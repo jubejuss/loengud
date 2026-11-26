@@ -309,6 +309,8 @@ def cmd_doctor(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .asr import allow_cloud_downloads
+    allow_cloud_downloads()
     ap = argparse.ArgumentParser(prog="loengud", description="Teams-salvestus → TalTech ASR → YouTube + loengurepo")
     ap.add_argument("--config", dest="config_path", type=Path, default=None, help="seadistusfail")
     sub = ap.add_subparsers(dest="cmd", required=True)
