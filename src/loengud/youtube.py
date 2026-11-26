@@ -26,8 +26,12 @@ def get_service(cfg: YoutubeConfig, interactive: bool = False):
     if cfg.token.exists():
         creds = Credentials.from_authorized_user_file(str(cfg.token), SCOPES)
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        cfg.token.write_text(creds.to_json(), encoding="utf-8")
+        from google.auth.exceptions import RefreshError
+        try:
+            creds.refresh(Request())
+            cfg.token.write_text(creds.to_json(), encoding="utf-8")
+        except RefreshError:
+            creds = None  # aegunud/tühistatud (OAuth „Testing“-režiimis 7 päeva) → uus sisselogimine
     if not creds or not creds.valid:
         if not interactive:
             raise YoutubeError("YouTube'i token puudub või aegus – käivita `loengud auth`.")
